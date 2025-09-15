@@ -84,34 +84,27 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="GPX Leaderboard API", version="0.2.0", lifespan=lifespan)
 
-# ---- ENV-DRIVEN ORIGINS ----
-# Single origin still supported via FRONTEND_ORIGIN,
-# or provide a comma-separated FRONTEND_ORIGINS for multiple.
-DEFAULT_FRONTEND = os.getenv("FRONTEND_ORIGIN", "http://localhost:3000")
-FRONTEND_ORIGINS = os.getenv("FRONTEND_ORIGINS", DEFAULT_FRONTEND)
-ALLOWED_ORIGINS = [o.strip() for o in FRONTEND_ORIGINS.split(",") if o.strip()]
+FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "http://localhost:3000").rstrip("/")
+SECRET_KEY      = os.getenv("SECRET_KEY", "dev-please-change")
 
-SECRET_KEY = os.getenv("SECRET_KEY", "dev-please-change")
-
-# Put CORS first so even errors carry CORS headers
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,   # <-- no "*" when credentials are used
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    # expose_headers=["*"],  # add if you need to read custom headers on the client
-)
-
-# Single, consistent session middleware (don’t add it twice)
+# sessions (once)
 app.add_middleware(
     SessionMiddleware,
     secret_key=SECRET_KEY,
-    same_site="none",   # cross-site cookie
-    https_only=True     # required with SameSite=None in production
+    same_site="none",  # cross-site cookies
+    https_only=True    # required when SameSite=None
 )
 
-# Routers
+ALLOWED_ORIGINS = [FRONTEND_ORIGIN]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,      # or use allow_origin_regex=ALLOWED_ORIGIN_REGEX
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["*"],                # or ["content-type","authorization","x-requested-with"]
+)
+
 app.include_router(strava_router)
 
 @app.get("/health")
