@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>GPX Map Viewer (Minimal)</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <style>
+    body { margin:0; font-family: Arial, sans-serif; }
+    .container { display:flex; height:100vh; }
+    .left { width:700px; border-right:1px solid #e5e7eb; padding:16px; overflow:auto; background:#fafafa; }
+    .right { flex:1; display:flex; }
+    .map { flex:1; }
+    h1 { margin:0 0 4px 0; font-size:36px; }
+    .section { background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:12px; margin-top:12px; }
+    .upload { border:2px dashed #d1d5db; padding:16px; text-align:center; border-radius:8px; background:#fcfcfc; }
+    .upload.dragover { background:#eef6ff; border-color:#3b82f6; }
+    button { cursor:pointer; border:0; border-radius:6px; padding:8px 12px; background:#2563eb; color:white; }
+    button:disabled { background:#9ca3af; cursor:not-allowed; }
+    .muted { color:#6b7280; font-size:16px; }
+    .row { display:flex; gap:8px; flex-wrap:wrap; }
+    .track-pill { display:flex; align-items:center; gap:8px; background:#f3f4f6; border:1px solid #e5e7eb; padding:6px 8px; border-radius:999px; }
+    .dot { font-weight:bold; }
+    .gate-item { border:1px solid #e5e7eb; border-radius:8px; padding:8px; margin-top:8px; background:#fff; }
+    .gate-title { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+    .gate-name { width:100%; border:1px solid #e5e7eb; border-radius:6px; padding:6px 8px; }
+    .coords { font-family:monospace; font-size:16px; color:#6b7280; }
+    .badge { padding:2px 6px; border-radius:999px; font-size:11px; font-weight:600; }
+    .start { background:#d1fae5; color:#065f46; }
+    .end { background:#e5e7eb; color:#111827; }
+    .status { font-size:14px; font-weight:700; color:#b45309; }
+    .ok { color:#065f46; }
+  </style>
+</head>
+<body>
+<div id="app">
+    <div class="container">
+    <!-- LEFT PANEL -->
+    <div class="left">
+        <h1>GPX Map Viewer</h1>
+        <div class="muted">Lil build of segment gate tool</div>
+
+        <!-- Upload -->
+        <div class="section">
+        <h3 style="margin:0 0 8px 0;">Upload GPX</h3>
+        <div class="upload" :class="{dragover:isDragOver}"
+                @dragover.prevent="isDragOver = true"
+                @dragleave.prevent="isDragOver = false"
+                @drop.prevent="handleDrop">
+            <div>Drag & drop .gpx here</div>
+            <div class="muted" style="margin:6px 0 8px">or</div>
+            <input ref="fileInput" type="file" accept=".gpx" multiple style="display:none" @change="handleFileSelect">
+            <button @click="$refs.fileInput.click()">Choose Files</button>
+        </div>
+        <div class="muted" v-if="loading" style="margin-top:8px;">Processing…</div>
+        <div style="margin-top:8px; color:#b91c1c" v-if="error">{{ error }}</div>
+        </div>
+
+        <!-- Tracks -->
+        <div class="section" v-if="tracks.length">
+        <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <h3 style="margin:0">Tracks <span class="muted">({{ tracks.length }})</span></h3>
+            <div class="row">
+            <button @click="clearTracks" style="background:#6b7280">Clear All</button>
+            </div>
+        </div>
+
+        <div class="tracks">
+            <div v-for="t in tracks" :key="t.id"
+                class="track-item"
+                style="display:flex; align-items:flex-start; gap:10px; border:1px solid #e5e7eb; background:#fff; border-radius:10px; padding:8px;">
+            <!-- Per-track selection -->
+            <input type="checkbox" :checked="isSelected(t.id)" @change="toggleTrack(t.id)" style="margin-top:4px;" />
+            <span class="dot" :style="{color:t.color}">●</span>
+            <div style="flex:1; min-width:0;">
+                <div style="font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ t.name }}</div>
+                <div class="muted">{{ t.points.length }} pts</div>
+
+                <!-- Segment times (per confirmed gate pair) -->
+                <div v-if="t.segmentTimes && t.segmentTimes.length" style="margin-top:6px; font-size:12px;">
+                <div v-for="seg in t.segmentTimes" :key="seg.segment" class="muted">
+                    <strong>{{ seg.segment }}:</strong>
+                    <span v-if="seg.timeSec !== 'N/A'">{{ seg.timeSec }}s</span>
+                    <span v-else>N/A</span>
+                </div>
+                </div>
+            </div>
+
+            <!-- Per-track remove -->
+            <button @click="removeTrack(t.id)" style="background:#ef4444">Remove</button>
+            </div>
+        </div>
+        </div>
+
+        <!-- Gate Pairs -->
+        <div class="section">
+        <div class="row" style="justify-content:space-between; align-items:center;">
+            <h3 style="margin:0">Gate Pairs</h3>
+            <div class="row">
+            <button @click="addGatePair">Add Gate Pair</button>
+            <button @click="clearAllGates" style="background:#ef4444">Clear</button>
+            </div>
+        </div>
+
+        <div v-if="gatePairs.length === 0" class="muted" style="margin-top:6px;">No gates yet. Click “Add Gate Pair”.</div>
+
+        <div v-for="pair in gatePairs" :key="pair.pairId" class="gate-item">
+            <div class="gate-title">
+            <input v-if="pair.editing" class="gate-name" v-model="pair.name" placeholder="Gate pair name">
+            <div v-else style="font-weight:600">{{ pair.name }}</div>
+            <div class="status" :class="{ok: pair.confirmed}">{{ pair.confirmed ? 'CONFIRMED' : 'EDITING' }}</div>
+            </div>
+
+            <div style="margin-top:6px;">
+            <span class="badge start">START</span>
+            <span class="coords">{{ pair.start.lat.toFixed(6) }}, {{ pair.start.lon.toFixed(6) }}</span>
+            </div>
+            <div style="margin-top:4px;">
+            <span class="badge end">END</span>
+            <span class="coords">{{ pair.end.lat.toFixed(6) }}, {{ pair.end.lon.toFixed(6) }}</span>
+            </div>
+
+            <div class="row" style="margin-top:8px;">
+            <button v-if="!pair.editing" @click="startEditing(pair.pairId)" style="background:#f59e0b; color:#111827;">Edit</button>
+            <button v-if="pair.editing" @click="saveAndConfirmGate(pair.pairId)" style="background:#10b981;">Save & Confirm</button>
+            <button @click="removeGatePair(pair.pairId)" style="background:#ef4444;">Remove</button>
+            </div>
+            <div class="muted" style="margin-top:6px;">Tip: when editing, drag the markers on the map.</div>
+        </div>
+        </div>
+
+        <!-- Courses (own block, still in left panel) -->
+        <div class="section">
+        <div class="row" style="justify-content:space-between; align-items:center;">
+            <h3 style="margin:0">Courses</h3>
+            <button @click="loadCourses" style="background:#374151">Refresh</button>
+        </div>
+
+        <!-- Save current confirmed gates as a course -->
+        <div style="margin-top:8px;">
+            <div class="muted" style="margin-bottom:4px;">Save current confirmed gate pairs as a reusable course</div>
+            <div class="row">
+            <input v-model="newCourseName" placeholder="Course name"
+                    style="flex:1; padding:6px 8px; border:1px solid #e5e7eb; border-radius:6px;">
+            <button @click="saveCurrentGatesAsCourse">Save</button>
+            </div>
+        </div>
+
+        <!-- Load an existing course -->
+        <div style="margin-top:12px;">
+            <div class="muted" style="margin-bottom:4px;">Load an existing course</div>
+            <div class="row">
+            <select v-model.number="selectedCourseId"
+                    style="flex:1; padding:6px 8px; border:1px solid #e5e7eb; border-radius:6px;">
+                <option :value="null">— Select —</option>
+                <option v-for="c in courses" :key="c.id" :value="c.id">
+                {{ c.name }} ({{ c.gates.length }} gates, {{ c.buffer_m }}m)
+                </option>
+            </select>
+            <button @click="loadSelectedCourse">Load</button>
+            </div>
+        </div>
+        </div>
+
+        <!-- Leaderboard (own block, still in left panel) -->
+        <div class="section" v-if="selectedCourseId">
+        <div class="row" style="justify-content:space-between; align-items:center;">
+            <h3 style="margin:0">Leaderboard</h3>
+            <button @click="fetchLeaderboard" style="background:#374151">Refresh</button>
+        </div>
+
+        <div class="row" style="align-items:center; margin-top:8px;">
+            <input v-model="username" placeholder="Your name (arcade style)"
+                    style="flex:1; padding:6px 8px; border:1px solid #e5e7eb; border-radius:6px;">
+        </div>
+        <div class="muted" style="margin-top:6px;">Submit any track below to the current course.</div>
+
+        <!-- Submit any of your uploaded tracks -->
+        <div style="margin-top:8px;">
+            <div v-for="t in tracks" :key="t.id"
+                style="display:flex; align-items:center; gap:10px; border:1px solid #e5e7eb; background:#fff; border-radius:10px; padding:8px; margin-bottom:6px;">
+            <span class="dot" :style="{color:t.color}">●</span>
+            <div style="flex:1; min-width:0;">
+                <div style="font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ t.name }}</div>
+                <div class="muted">{{ t.points.length }} pts</div>
+            </div>
+            <button @click="submitTrackToLeaderboard(t.id)" :disabled="!username">Submit</button>
+            </div>
+        </div>
+
+        <!-- Top times -->
+        <div v-if="leaderboard.length" style="margin-top:12px;">
+            <div class="muted" style="margin-bottom:6px;">Top times</div>
+            <div v-for="(e,i) in leaderboard" :key="e.id"
+                style="display:flex; align-items:center; justify-content:space-between; gap:8px; border:1px solid #e5e7eb; background:#fff; border-radius:10px; padding:8px; margin-bottom:6px;">
+            <div style="display:flex; gap:8px; align-items:center;">
+                <div style="width:22px; text-align:center; font-weight:700;">#{{ i+1 }}</div>
+                <div style="font-weight:600">{{ e.username }}</div>
+            </div>
+            <div style="font-weight:700">{{ e.total_time_sec }}s</div>
+            </div>
+        </div>
+        <div class="muted" v-else style="margin-top:8px;">No entries yet.</div>
+        </div>
+    </div>
+
+    <!-- RIGHT PANEL (MAP) -->
+    <div class="right">
+        <div id="map" class="map"></div>
+    </div>
+    </div>
+</div>
+<script>
+const { createApp } = Vue;
+
+const app = createApp({
+  data() {
+    return {
+        // Map & layers
+        map: null,
+        trackLayers: [],   // holds polylines + start/end markers for tracks
+        selectedTrackIds: [], // holds ids of selected tracks
+        gateMarkers: [],   // holds gate markers (for all pairs)
+
+        // UI state
+        isDragOver: false,
+        loading: false,
+        error: null,
+
+        // Data
+        tracks: [],        // [{id, name, points:[{lat, lon, ele?, time?}], color}]
+        trackColors: ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#14b8a6', '#111827'],
+        timeGates: [],      // flat list of gates: {id, pairId, name, type:'start'|'end', lat, lon, confirmed, editing}
+
+        // Constants
+        bufferMeters: 10,
+
+        // Leaderboard
+        username: "",
+        newCourseName: "",
+        courses: [],
+        selectedCourseId: null,
+        leaderboard: [],
+    };
+  },
+
+  computed: {
+    // build pairs from flat gates robustly
+    gatePairs() {
+      const groups = new Map();
+      for (const g of this.timeGates) {
+        if (!groups.has(g.pairId)) {
+          groups.set(g.pairId, {
+            pairId: g.pairId,
+            name: g.name || `Gate Pair ${g.pairId}`,
+            start: null,
+            end: null,
+            confirmed: false,
+            editing: false
+          });
+        }
+        const entry = groups.get(g.pairId);
+        entry[g.type] = g;                             // start or end
+        entry.name = g.name || entry.name;
+        entry.confirmed = !!(entry.start?.confirmed && entry.end?.confirmed);
+        entry.editing = !!(entry.start?.editing || entry.end?.editing);
+      }
+      return Array.from(groups.values()).filter(p => p.start && p.end);
+    }
+  },
+
+  mounted() {
+    this.initMap();
+    this.loadCourses();
+  },
+
+  methods: {
+    /* -------------------- COURSES -------------------- */
+    async apiGet(path) {
+        const res = await fetch(path);
+        if (!res.ok) {
+            let msg;
+            try { msg = (await res.json()).detail || await res.text(); } catch { msg = await res.text(); }
+            throw new Error(msg);
+        }
+        return res.json();
+        },
+
+        // [ADD] Courses: list
+        async loadCourses() {
+        try {
+            this.courses = await this.apiGet("/courses");
+        } catch (e) {
+            console.error(e);
+            this.courses = [];
+        }
+        },
+
+        // [ADD] Courses: save current confirmed gates as a course
+        async saveCurrentGatesAsCourse() {
+        const gates = this.gatePairsToApiPayload();
+        if (!gates.length) { alert("Confirm at least one gate pair before saving."); return; }
+        if (!this.newCourseName) { alert("Enter a course name."); return; }
+
+        try {
+            const saved = await this.apiPost("/courses", {
+            name: this.newCourseName,
+            buffer_m: this.bufferMeters || 10,
+            gates
+            });
+            this.newCourseName = "";
+            await this.loadCourses();
+            this.selectedCourseId = saved.id;
+            await this.loadSelectedCourse();
+        } catch (e) {
+            alert(`Save failed: ${e.message || e}`);
+        }
+        },
+
+        // [ADD] Courses: load selected course into the map + state
+        async loadSelectedCourse() {
+        if (!this.selectedCourseId) return;
+        try {
+            const c = await this.apiGet(`/courses/${this.selectedCourseId}`);
+
+            // Replace local gates with course gates (confirmed, non-editing)
+            this.timeGates = [];
+            for (const g of c.gates) {
+            this.timeGates.push({
+                id: `${g.pairId}_S`, pairId: g.pairId, name: g.name,
+                type: "start", lat: g.start.lat, lon: g.start.lon,
+                confirmed: true, editing: false
+            });
+            this.timeGates.push({
+                id: `${g.pairId}_E`, pairId: g.pairId, name: g.name,
+                type: "end", lat: g.end.lat, lon: g.end.lon,
+                confirmed: true, editing: false
+            });
+            }
+            this.bufferMeters = c.buffer_m;
+            this.redrawGates();
+            await this.fetchLeaderboard();
+            await this.recalcAllSegmentTimes();
+        } catch (e) {
+            alert(`Load failed: ${e.message || e}`);
+        }
+        },
+
+        // [ADD] Leaderboard: fetch
+        async fetchLeaderboard() {
+        if (!this.selectedCourseId) { this.leaderboard = []; return; }
+        try {
+            const data = await this.apiGet(`/leaderboard/${this.selectedCourseId}`);
+            this.leaderboard = data.entries || [];
+        } catch (e) {
+            console.error(e);
+            this.leaderboard = [];
+        }
+        },
+
+        // [ADD] Leaderboard: submit a track (arcade-style name only)
+        async submitTrackToLeaderboard(trackId) {
+        if (!this.selectedCourseId) { alert("Select a course first."); return; }
+        if (!this.username) { alert("Enter a username first."); return; }
+        const t = this.tracks.find(x => x.id === trackId);
+        if (!t?.points?.length) { alert("Track has no points."); return; }
+
+        try {
+            const res = await this.apiPost(`/leaderboard/${this.selectedCourseId}/submit`, {
+            username: this.username,
+            points: t.points.map(p => ({ lat: p.lat, lon: p.lon, ele: p.ele ?? null, time: p.time ?? null }))
+            });
+            await this.fetchLeaderboard();
+            alert(`Submitted! Total: ${res.total_time_sec}s`);
+        } catch (e) {
+            alert(`Submission failed: ${e.message || e}`);
+        }
+        },
+    /* -------------------- API -------------------- */
+    async apiPost(path, body) {
+        const res = await fetch(path, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body)
+        });
+        if (!res.ok) {
+            let msg;
+            try { msg = (await res.json()).detail || await res.text(); } catch { msg = await res.text(); }
+            throw new Error(msg);
+        }
+        return res.json();
+    },
+
+    gatePairsToApiPayload() {
+    return this.gatePairs
+        .filter(p => p.start && p.end && p.confirmed)
+        .map(p => ({
+        pairId: p.pairId,
+        name: p.name || `Gate Pair ${p.pairId}`,
+        start: { lat: p.start.lat, lon: p.start.lon },
+        end:   { lat: p.end.lat,   lon: p.end.lon }
+        }));
+    },
+    /* -------------------- MAP INIT -------------------- */
+    initMap() {
+      this.map = L.map('map', { worldCopyJump: true }).setView([49.35, -123.10], 11);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors'
+      }).addTo(this.map);
+
+      const bcBounds = L.latLngBounds([48.0, -125.5], [50.5, -122.0]);
+      this.map.setMaxBounds(bcBounds);
+      this.map.setMinZoom(4);
+      this.map.setMaxZoom(20);
+    },
+
+    /* -------------------- UPLOAD -------------------- */
+    handleDrop(e) {
+      this.isDragOver = false;
+      const files = Array.from(e.dataTransfer.files || []).filter(f => f.name.toLowerCase().endsWith('.gpx'));
+      files.forEach(this.processFile);
+    },
+    handleFileSelect(e) {
+      const files = Array.from(e.target.files || []).filter(f => f.name.toLowerCase().endsWith('.gpx'));
+      files.forEach(this.processFile);
+    },
+
+    async processFile(file) {
+      // quick validation
+      if (!file.name.toLowerCase().endsWith('.gpx')) { this.error = 'Please select a .gpx file.'; return; }
+      if (file.size > 10 * 1024 * 1024) { this.error = 'Max file size is 10MB.'; return; }
+
+      this.loading = true; this.error = null;
+      const formData = new FormData();
+      formData.append('gpxfile', file);
+
+      try {
+        const resp = await fetch('/upload-gpx', { method: 'POST', body: formData });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({ error: 'Upload failed' }));
+          throw new Error(err.error || 'Upload failed');
+        }
+        const data = await resp.json();
+        if (!data.tracks?.length) throw new Error('No tracks found in GPX');
+
+        const base = this.tracks.length;
+        const newTracks = data.tracks.map((t, i) => ({
+          ...t,
+          id: `${Date.now()}_${i}`,
+          color: this.trackColors[(base + i) % this.trackColors.length]
+        }));
+
+        this.tracks.push(...newTracks);
+        this.selectedTrackIds.push(...newTracks.map(t => t.id));
+        this.redrawTracks();
+
+        if (this.gatePairs.some(p => p.confirmed)) {
+            this.recalcAllSegmentTimes();
+        }
+
+      } catch (e) {
+        this.error = e.message || 'Unknown error';
+      } finally {
+        this.loading = false;
+        if (this.$refs.fileInput) this.$refs.fileInput.value = '';
+      }
+    },
+
+    clearTracks() {
+      this.tracks = [];
+      this.clearLayerArray(this.trackLayers);
+    },
+
+    /* -------------------- GATES (NO CHECKPOINTS) -------------------- */
+    addGatePair() {
+      const c = this.map.getCenter();
+      const offset = 0.001; // ~100m-ish latitude/longitude-ish (varies by lat)
+      const nextPairId = this.nextPairId();
+
+      const start = {
+        id: `${Date.now()}_S`,
+        pairId: nextPairId,
+        name: `Gate Pair ${nextPairId}`,
+        type: 'start',
+        lat: c.lat + offset,
+        lon: c.lng + offset,
+        confirmed: false,
+        editing: true
+      };
+      const end = {
+        id: `${Date.now()}_E`,
+        pairId: nextPairId,
+        name: `Gate Pair ${nextPairId}`,
+        type: 'end',
+        lat: c.lat - offset,
+        lon: c.lng - offset,
+        confirmed: false,
+        editing: true
+      };
+      this.timeGates.push(start, end);
+      this.redrawGates();
+    },
+
+    startEditing(pairId) {
+      // exactly one pair editable at once
+      this.timeGates.forEach(g => { g.editing = (g.pairId === pairId); if (g.pairId !== pairId && !g.confirmed) g.confirmed = false; });
+      this.redrawGates();
+    },
+
+    saveAndConfirmGate(pairId) {
+      // copy name from start gate (if edited), mark pair confirmed & stop editing
+      const start = this.timeGates.find(g => g.pairId === pairId && g.type === 'start');
+      const newName = start?.name || `Gate Pair ${pairId}`;
+
+      this.timeGates = this.timeGates.map(g => {
+        if (g.pairId !== pairId) return g;
+        return { ...g, name: newName, confirmed: true, editing: false };
+      });
+      this.redrawGates();
+      this.recalcAllSegmentTimes();
+      this.fetchLeaderboard();
+    },
+
+    removeGatePair(pairId) {
+      this.timeGates = this.timeGates.filter(g => g.pairId !== pairId);
+      this.redrawGates();
+      this.recalcAllSegmentTimes();
+    },
+
+    clearAllGates() {
+      this.timeGates = [];
+      this.redrawGates();
+      this.recalcAllSegmentTimes();
+    },
+
+    nextPairId() {
+      // choose the smallest positive integer not used yet
+      const used = new Set(this.timeGates.map(g => g.pairId));
+      let i = 1; while (used.has(i)) i += 1; return i;
+    },
+
+    /* -------------------- TRACKS -------------------- */
+    isSelected(trackId) {
+        return this.selectedTrackIds.includes(trackId);
+    },
+
+    toggleTrack(trackId) {
+        const i = this.selectedTrackIds.indexOf(trackId);
+        if (i >= 0) this.selectedTrackIds.splice(i, 1);
+        else this.selectedTrackIds.push(trackId);
+        this.redrawTracks();
+    },
+
+    removeTrack(trackId) {
+        this.tracks = this.tracks.filter(t => t.id !== trackId);
+        const i = this.selectedTrackIds.indexOf(trackId);
+        if (i >= 0) this.selectedTrackIds.splice(i, 1);
+        this.redrawTracks();
+    },
+
+    /* -------------------- DRAWING / LAYERS -------------------- */
+    clearLayerArray(arr) {
+      arr.forEach(l => { try { this.map.removeLayer(l); } catch(_) {} });
+      arr.splice(0, arr.length);
+    },
+
+    redrawTracks() {
+        this.clearLayerArray(this.trackLayers);
+
+        if (!this.tracks.length) return;
+
+        // Only draw tracks that are both selected and have points
+        const selected = new Set(this.selectedTrackIds);
+        const toDraw = this.tracks.filter(t => selected.has(t.id) && t.points?.length > 0);
+
+        if (!toDraw.length) return;
+
+        let bounds = null;
+        toDraw.forEach(t => {
+            const latlngs = t.points.map(p => [p.lat, p.lon]);
+            const line = L.polyline(latlngs, { color: t.color, weight: 3, opacity: 0.9 }).addTo(this.map);
+            this.trackLayers.push(line);
+
+            const start = L.marker(latlngs[0]).addTo(this.map).bindPopup(`${t.name} - Start`);
+            const end = L.marker(latlngs[latlngs.length - 1]).addTo(this.map).bindPopup(`${t.name} - End`);
+            this.trackLayers.push(start, end);
+
+            bounds = bounds ? bounds.extend(line.getBounds()) : line.getBounds();
+        });
+
+        if (bounds) this.map.fitBounds(bounds);
+    },
+
+    redrawGates() {
+      // remove old gate markers then rebuild from state
+      this.clearLayerArray(this.gateMarkers);
+
+      for (const gate of this.timeGates) {
+        const isStart = gate.type === 'start';
+        const isEditing = gate.editing;
+        const isConfirmed = gate.confirmed;
+
+        // simple, readable style
+        const bg = isStart ? (isConfirmed ? '#10b981' : '#f59e0b') : (isConfirmed ? '#111827' : '#f59e0b');
+        const border = isStart ? (isConfirmed ? '#047857' : '#ea580c') : (isConfirmed ? '#ffffff' : '#ea580c');
+        const label = isStart ? 'S' : 'E';
+
+        const icon = L.divIcon({
+          className: 'gate-icon',
+          html: `<div style="background:${bg}; color:white; border-radius:50%; width:34px; height:34px; display:flex; align-items:center; justify-content:center; font-weight:700; border:3px solid ${border}; box-shadow:0 2px 6px rgba(0,0,0,.3);">${label}</div>`,
+          iconSize: [34,34],
+          iconAnchor: [17,17]
+        });
+
+        const marker = L.marker([gate.lat, gate.lon], {
+          icon,
+          draggable: isEditing || !isConfirmed
+        }).addTo(this.map);
+
+        // no inline onclick; only Vue state drives updates
+        marker.on('dragend', (e) => {
+          const ll = e.target.getLatLng();
+          gate.lat = ll.lat; gate.lon = ll.lng;
+          // update side-panel immediately (Vue reactive)
+        });
+
+        this.gateMarkers.push(marker);
+      }
+    },
+
+    /* -------------------- SEGMENT TIMES -------------------- */
+    async recalcAllSegmentTimes() {
+        if (!this.tracks.length) return;
+
+        const gates = this.gatePairsToApiPayload();
+        // If no confirmed gates, clear any old results
+        if (!gates.length) {
+            this.tracks.forEach(t => t.segmentTimes = []);
+            return;
+        }
+
+        const buffer_m = this.bufferMeters || 10;
+
+        // Compute per track (simple + readable; can batch later if needed)
+        for (const t of this.tracks) {
+            if (!t.points?.length) { 
+                t.segmentTimes = []; 
+                continue; 
+            }
+            try {
+                const data = await this.apiPost("/segment-times", {
+                    points: t.points.map(p => ({ lat: p.lat, lon: p.lon, ele: p.ele ?? null, time: p.time ?? null })),
+                    gates,
+                    buffer_m
+                });
+                t.segmentTimes = data.segments || [];
+            } catch (e) {
+                console.error("Segment calc failed", e);
+                t.segmentTimes = [];
+            }
+        }
+    },
+  }
+}).mount('#app');
+
+// Optional: expose for quick console debugging
+window.app = app;
+</script>
+</body>
+</html>
