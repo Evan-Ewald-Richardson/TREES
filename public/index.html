@@ -57,6 +57,73 @@
         <div class="muted" v-if="loading" style="margin-top:8px;">Processing…</div>
         <div style="margin-top:8px; color:#b91c1c" v-if="error">{{ error }}</div>
         </div>
+        
+        <!-- Strava (integrated: connect + list + preview + paging + collapse) -->
+        <div class="section">
+            <div class="row" style="justify-content:space-between; align-items:center;">
+            <h3 style="margin:0; cursor:pointer;" @click="strava.open = !strava.open">
+                Strava
+                <span class="muted" style="font-weight:400; margin-left:6px;">
+                (click to {{ strava.open ? 'collapse' : 'expand' }})
+                </span>
+            </h3>
+        
+            <div class="row">
+                <button v-if="!strava.connected" @click="stravaLogin" style="background:#ef4444">Connect</button>
+                <div v-else class="muted">Connected as {{ strava.athlete?.username || strava.athlete?.firstname || 'athlete' }}</div>
+            </div>
+            </div>
+        
+            <div v-show="strava.open" style="margin-top:8px;">
+            <div class="row" v-if="strava.connected" style="align-items:center;">
+                <button @click="refreshStrava" style="background:#374151">Refresh</button>
+                <div class="muted">Most recent {{ strava.perPage }} activities</div>
+            </div>
+        
+            <div v-if="strava.error" style="color:#b91c1c; margin-top:8px;">{{ strava.error }}</div>
+            <div v-if="strava.loading" class="muted" style="margin-top:8px;">Loading…</div>
+        
+            <div v-if="strava.connected && !strava.loading" style="margin-top:8px;">
+                <div v-if="!strava.activities.length" class="muted">No activities on this page.</div>
+        
+                <div class="tracks" v-else>
+                <div v-for="a in strava.activities" :key="a.id"
+                    class="track-item"
+                    style="display:flex; align-items:center; gap:10px; border:1px solid #e5e7eb; background:#fff; border-radius:10px; padding:8px; margin-bottom:6px;">
+                    <div style="flex:1; min-width:0;">
+                    <div style="font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                        {{ a.name }} <span class="muted">({{ a.sport_type || a.type }})</span>
+                    </div>
+                    <div class="muted">
+                        {{ a.start_date_local || a.start_date }}
+                        <span v-if="a.distance"> · {{ (a.distance/1000).toFixed(2) }} km</span>
+                    </div>
+                    </div>
+        
+                    <button
+                    @click="previewStravaActivity(a.id)"
+                    :style="{ background: (strava.preview.activityId === a.id ? '#374151' : '#2563eb') }"
+                    >
+                    {{ strava.preview.activityId === a.id ? 'Hide Preview' : 'Preview' }}
+                    </button>
+        
+                    <button @click="importStravaActivity(a.id)">Import</button>
+                </div>
+                </div>
+        
+                <!-- Pagination -->
+                <div class="row" style="justify-content:space-between; margin-top:8px;">
+                <button @click="prevStravaPage" :disabled="strava.page <= 1">Prev</button>
+                <div class="muted">Page {{ strava.page }}</div>
+                <button @click="nextStravaPage" :disabled="!strava.hasMore">Next</button>
+                </div>
+            </div>
+        
+            <div v-if="!strava.connected && !strava.loading" class="muted" style="margin-top:8px;">
+                Connect your Strava account to import recent activities.
+            </div>
+            </div>
+        </div>
 
         <!-- Tracks -->
         <div class="section" v-if="tracks.length">
@@ -243,6 +310,20 @@ const app = createApp({
         courses: [],
         selectedCourseId: null,
         leaderboard: [],
+
+        // Strava
+        strava: {
+            connected: false,
+            athlete: null,
+            activities: [],
+            error: null,
+            open: false,
+            page: 1,
+            perPage: 5,
+            hasMore: false,
+            loading: false,
+            preview: { activityId: null, layer: null }
+        },
     };
   },
 
@@ -274,6 +355,7 @@ const app = createApp({
   mounted() {
     this.initMap();
     this.loadCourses();
+    this.checkStravaConnected();
   },
 
   methods: {
@@ -660,6 +742,128 @@ const app = createApp({
                 console.error("Segment calc failed", e);
                 t.segmentTimes = [];
             }
+        }
+    },
+
+    /* -------------------- STRAVA -------------------- */
+    async checkStravaConnected() {
+        try {
+            const res = await fetch('/api/strava/me');
+            if (!res.ok) throw new Error(await res.text());
+            this.strava.athlete = await res.json();
+            this.strava.connected = true;
+            this.strava.error = null;
+        } catch (e) {
+            this.strava.connected = false;
+            this.strava.athlete = null;
+            // do not show error on page load
+        }
+    },
+
+    stravaLogin() {
+        window.location.href = '/api/strava/login';
+    },
+    
+    async fetchStravaActivities(page = this.strava.page) {
+        if (!this.strava.connected) return;
+        this.strava.loading = true;
+        this.strava.error = null;
+        try {
+            const url = `/api/strava/activities?per_page=${this.strava.perPage}&page=${page}`;
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(await res.text());
+            const data = await res.json();
+            // backend may return an array or {activities:[...]}
+            const list = Array.isArray(data) ? data : (data.activities || data.data || []);
+            this.strava.activities = list;
+            this.strava.page = page;
+            this.strava.hasMore = (list.length === this.strava.perPage);
+        } catch (e) {
+            this.strava.error = e?.message || 'Failed to load activities';
+        } finally {
+            this.strava.loading = false;
+        }
+    },
+
+    async nextStravaPage() {
+        if (!this.strava.hasMore) return;
+        await this.fetchStravaActivities(this.strava.page + 1);
+        this.clearStravaPreview();
+    },
+
+    async prevStravaPage() {
+        if (this.strava.page <= 1) return;
+        await this.fetchStravaActivities(this.strava.page - 1);
+        this.clearStravaPreview();
+    },
+
+    async refreshStrava() {
+        this.strava.page = 1;
+        await this.fetchStravaActivities(1);
+    },
+
+    clearStravaPreview() {
+        if (this.strava.preview.layer) {
+            try { this.map.removeLayer(this.strava.preview.layer); } catch {}
+        }
+        this.strava.preview.layer = null;
+        this.strava.preview.activityId = null;
+    },
+
+    async previewStravaActivity(activityId) {
+        // toggle off
+        if (this.strava.preview.activityId === activityId) {
+            this.clearStravaPreview();
+            return;
+        }
+        try {
+            // reuse your import endpoint for points
+            const res = await fetch(`/api/strava/activities/${activityId}/points`);
+            if (!res.ok) throw new Error(await res.text());
+            const data = await res.json();
+            const latlngs = (data.points || []).map(p => [p.lat, p.lon]);
+            if (!latlngs.length) throw new Error('No points');
+
+            this.clearStravaPreview();
+            const layer = L.polyline(latlngs, { weight: 4, opacity: 0.9, dashArray: '6,6' }).addTo(this.map);
+            this.strava.preview.layer = layer;
+            this.strava.preview.activityId = activityId;
+            this.map.fitBounds(layer.getBounds());
+        } catch (e) {
+            this.strava.error = e.message || 'Preview failed';
+        }
+    },
+
+    async importStravaActivity(activityId) {
+        try {
+            const res = await fetch(`/api/strava/activities/${activityId}/points`);
+            if (!res.ok) throw new Error(await res.text());
+            const data = await res.json();
+            const pts = data.points || [];
+            if (!pts.length) throw new Error('No timed points found for this activity');
+
+            const base = this.tracks.length;
+            const t = {
+            id: `${Date.now()}_${activityId}`,
+            name: data.name || `Activity ${activityId}`,
+            points: pts,
+            color: this.trackColors[(base) % this.trackColors.length]
+            };
+            this.tracks.push(t);
+            this.selectedTrackIds.push(t.id);
+            this.redrawTracks();
+
+            // recompute segment times if gates exist
+            if (this.gatePairs.some(p => p.confirmed)) {
+            this.recalcAllSegmentTimes();
+            }
+
+            // clear preview if it was this activity
+            if (this.strava.preview.activityId === activityId) {
+            this.clearStravaPreview();
+            }
+        } catch (e) {
+            alert(e.message || 'Import failed');
         }
     },
   }

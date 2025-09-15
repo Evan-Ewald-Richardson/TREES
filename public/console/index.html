@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Admin Console · Secret Gates</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  :root { --b:#e5e7eb; --bg:#f8fafc; --text:#111827; --muted:#6b7280; --primary:#2563eb; --secondary:#374151; --danger:#ef4444; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background:var(--bg); color:var(--text); }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 16px; }
+  h1 { margin: 8px 0 12px; font-size: 22px; }
+  .card { background:#fff; border:1px solid var(--b); border-radius:10px; padding:12px; margin-top:12px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  input, select { padding:8px 10px; border:1px solid var(--b); border-radius:6px; }
+  button { padding:8px 12px; border:0; border-radius:6px; background:var(--primary); color:#fff; cursor:pointer; }
+  button.secondary { background:var(--secondary); }
+  button.danger { background:var(--danger); }
+  .muted { color:var(--muted); font-size:14px; }
+  .list { margin-top:10px; display:flex; flex-direction:column; gap:8px; }
+  .item { border:1px solid var(--b); border-radius:8px; background:#fff; padding:8px; display:flex; justify-content:space-between; align-items:center; }
+  .err { color:#b91c1c; margin-top:8px; }
+  .spacer { flex:1; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Admin Console</h1>
+
+  <!-- Tools -->
+  <div class="card" id="toolsCard">
+    <div class="row" style="justify-content:space-between;">
+      <div class="row">
+        <button id="refreshCourses" class="secondary">List Courses</button>
+        <select id="courseSelect"></select>
+        <button id="loadEntries" class="secondary">List Entries</button>
+      </div>
+      <div class="row">
+        <button id="clearEntries" class="danger">Clear Entries (Course)</button>
+      </div>
+    </div>
+
+    <div class="muted" style="margin-top:8px;">Delete actions are permanent.</div>
+
+    <div class="card">
+      <div class="row" style="justify-content:space-between;">
+        <h3 style="margin:0;">Courses</h3>
+      </div>
+      <div id="coursesList" class="list"></div>
+    </div>
+
+    <div class="card">
+      <div class="row" style="justify-content:space-between;">
+        <h3 style="margin:0;">Entries</h3>
+      </div>
+      <div id="entriesList" class="list"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+    // no manual Authorization header—browser will send it after /console auth
+    async function adminGet(path) {
+      const res = await fetch(path);
+      if (res.status === 401) {
+        // If creds expired or realm changed, reload to re-trigger the browser prompt
+        location.reload();
+        throw new Error('Unauthorized');
+      }
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    }
+  
+    async function adminDelete(path) {
+      const res = await fetch(path, { method: 'DELETE' });
+      if (res.status === 401) {
+        location.reload();
+        throw new Error('Unauthorized');
+      }
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    }
+</script>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+      // We are already behind /console Basic auth, so just load immediately
+      loadCourses();
+    });
+  
+    // keep these listeners
+    els.refreshBtn.addEventListener('click', loadCourses);
+    els.loadEntries.addEventListener('click', loadEntries);
+    els.clearEntries.addEventListener('click', clearEntries);
+    
+  </script>
+
+<script>
+(function(){
+  const els = {
+    loginCard:   document.getElementById('loginCard'),
+    toolsCard:   document.getElementById('toolsCard'),
+    u:           document.getElementById('u'),
+    p:           document.getElementById('p'),
+    loginBtn:    document.getElementById('loginBtn'),
+    loginErr:    document.getElementById('loginErr'),
+    refreshBtn:  document.getElementById('refreshCourses'),
+    courseSel:   document.getElementById('courseSelect'),
+    loadEntries: document.getElementById('loadEntries'),
+    clearEntries:document.getElementById('clearEntries'),
+    coursesList: document.getElementById('coursesList'),
+    entriesList: document.getElementById('entriesList'),
+    signOut:     document.getElementById('signOut'),
+  };
+
+  function authHeader() {
+    const token = btoa(`${els.u.value}:${els.p.value}`);
+    return { 'Authorization': `Basic ${token}` };
+  }
+
+  async function ping() {
+    const res = await fetch('/api/admin/ping', { headers: authHeader() });
+    if (!res.ok) throw new Error('unauthorized');
+    return res.json();
+  }
+
+  async function loadCourses() {
+    els.coursesList.innerHTML = '';
+    els.courseSel.innerHTML = '';
+    try {
+      const data = await adminGet('/api/admin/courses');
+      const courses = data.courses || [];
+
+      // dropdown
+      const opt0 = document.createElement('option');
+      opt0.value = ''; opt0.textContent = '— Select —';
+      els.courseSel.appendChild(opt0);
+
+      courses.forEach(c => {
+        const o = document.createElement('option');
+        o.value = c.id;
+        o.textContent = `${c.name} (${c.gates} gates, ${c.entries} entries, ${c.buffer_m}m)`;
+        els.courseSel.appendChild(o);
+      });
+
+      // list
+      els.coursesList.innerHTML = '';
+      courses.forEach(c => {
+        const div = document.createElement('div');
+        div.className = 'item';
+        div.innerHTML = `
+          <div>
+            <strong>${c.name}</strong>
+            <div class="muted">${c.gates} gates · ${c.entries} entries · ${c.buffer_m}m</div>
+          </div>
+          <div class="row">
+            <button data-load="${c.id}" class="secondary">Load</button>
+            <button data-del="${c.id}" class="danger">Delete</button>
+          </div>
+        `;
+        div.querySelector('[data-load]').addEventListener('click', async () => {
+          els.courseSel.value = String(c.id);
+          await loadEntries();
+        });
+        div.querySelector('[data-del]').addEventListener('click', async () => {
+          if (!confirm(`Delete course "${c.name}" and ALL its data?`)) return;
+          await adminDelete(`/api/admin/courses/${c.id}`);
+          await loadCourses();
+          if (els.courseSel.value == c.id) { els.entriesList.innerHTML = ''; }
+        });
+        els.coursesList.appendChild(div);
+      });
+    } catch (e) {
+      console.error(e);
+      els.coursesList.innerHTML = '<div class="muted">Failed to load courses.</div>';
+    }
+  }
+
+  async function loadEntries() {
+    els.entriesList.innerHTML = '';
+    const cid = Number(els.courseSel.value || 0);
+    if (!cid) return;
+    try {
+      const data = await adminGet(`/api/admin/leaderboard/${cid}`);
+      const entries = data.entries || [];
+      if (!entries.length) {
+        els.entriesList.innerHTML = '<div class="muted">No entries.</div>';
+        return;
+      }
+      entries.forEach(e => {
+        const div = document.createElement('div');
+        div.className = 'item';
+        div.innerHTML = `
+          <div>
+            <strong>${e.username}</strong>
+            <div class="muted">${e.total_time_sec}s · ${e.created_at}</div>
+          </div>
+          <button data-del="${e.id}" class="danger">Delete</button>
+        `;
+        div.querySelector('button').addEventListener('click', async () => {
+          await adminDelete(`/api/admin/leaderboard/${e.id}`);
+          await loadEntries();
+        });
+        els.entriesList.appendChild(div);
+      });
+    } catch (e) {
+      console.error(e);
+      els.entriesList.innerHTML = '<div class="muted">Failed to load entries.</div>';
+    }
+  }
+
+  async function clearEntries() {
+    const cid = Number(els.courseSel.value || 0);
+    if (!cid) return;
+    if (!confirm('Clear ALL entries for this course?')) return;
+    await adminDelete(`/api/admin/leaderboard/by-course/${cid}`);
+    await loadEntries();
+  }
+
+  // Wire up
+  els.refreshBtn.addEventListener('click', loadCourses);
+  els.loadEntries.addEventListener('click', loadEntries);
+  els.clearEntries.addEventListener('click', clearEntries);
+  els.signOut.addEventListener('click', () => {
+    els.p.value = '';
+  });
+})();
+</script>
+</body>
+</html>

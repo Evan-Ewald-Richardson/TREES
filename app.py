@@ -1,6 +1,8 @@
 # app.py
 from __future__ import annotations
 
+import os
+import secrets
 import json
 import math
 from contextlib import asynccontextmanager
@@ -8,17 +10,44 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 import gpxpy
-from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, Body
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, Body, status, Request
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from sqlmodel import Field as ORMField, SQLModel, Session, create_engine, select
+from dotenv import load_dotenv, find_dotenv
+from starlette.responses import FileResponse, Response
+from starlette.middleware.sessions import SessionMiddleware
 
+from routes_strava import router as strava_router
+from db_core import engine, get_session
+
+# =============================================================================
+# Admin auth
+# =============================================================================
+load_dotenv(find_dotenv(), override=False)
+
+security = HTTPBasic()
+
+def _admin_creds():
+    # Read fresh each request so .env changes apply after restart
+    return os.getenv("ADMIN_USER", "admin"), os.getenv("ADMIN_PASS", "changeme")
+
+def require_admin(credentials: HTTPBasicCredentials = Depends(security)) -> bool:
+    ADMIN_USER, ADMIN_PASS = _admin_creds()
+    ok_user = secrets.compare_digest(credentials.username, ADMIN_USER)
+    ok_pass = secrets.compare_digest(credentials.password, ADMIN_PASS)
+    if not (ok_user and ok_pass):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid credentials",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    return True
 # =============================================================================
 # Database (SQLite)
 # =============================================================================
-
-engine = create_engine("sqlite:///./app.db", connect_args={"check_same_thread": False})
-
 
 class Course(SQLModel, table=True):
     id: Optional[int] = ORMField(default=None, primary_key=True)
@@ -36,12 +65,6 @@ class LeaderboardEntry(SQLModel, table=True):
     total_time_sec: int
     segment_times_json: str  # [{"segment":"Pair 1","timeSec":123}, ...]
     created_at: datetime = ORMField(default_factory=datetime.utcnow)
-
-
-def get_session():
-    with Session(engine) as session:
-        yield session
-
 
 # =============================================================================
 # Lifespan (replaces @app.on_event("startup"))
@@ -69,6 +92,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.add_middleware(SessionMiddleware, secret_key=os.getenv("SECRET_KEY", "dev-secret"))
+
+app.include_router(strava_router)
 
 # =============================================================================
 # GPX parsing & upload
@@ -354,6 +381,137 @@ def segment_times(payload: Dict[str, Any] = Body(...)):
         return {"segments": []}
     segs = compute_segment_times(points, gates, buffer_m)
     return {"segments": segs}
+
+
+# =============================================================================
+# Admin / DEV endpoints
+# =============================================================================
+@app.get("/console")
+def console_index(request: Request, _admin: bool = Depends(require_admin)):
+    return FileResponse(os.path.join("public", "console", "index.html"))
+
+@app.get("/console/{path:path}")
+def console_assets(path: str, _admin: bool = Depends(require_admin)):
+    base = os.path.join("public", "console")
+
+    # Default to index for empty paths
+    if path in ("", "/", "index.html"):
+        return FileResponse(os.path.join(base, "index.html"))
+
+    full_path = os.path.join(base, path)
+
+    # Quietly swallow missing favicon
+    if path == "favicon.ico" and not os.path.isfile(full_path):
+        return Response(status_code=204)
+
+    # If asset exists, serve it
+    if os.path.isfile(full_path):
+        return FileResponse(full_path)
+
+    # Fallback to SPA index to avoid "Asset not found" on hard refresh
+    return FileResponse(os.path.join(base, "index.html"))
+
+@app.get("/api/admin/ping")
+def admin_ping(_: bool = Depends(require_admin)):
+    return {"ok": True}
+
+@app.get("/api/admin/courses")
+def admin_list_courses(
+    _admin: bool = Depends(require_admin),
+    session: Session = Depends(get_session),
+):
+    courses = session.exec(select(Course)).all()
+    out = []
+    for c in courses:
+        gates = json.loads(c.gates_json) if c.gates_json else []
+        entries = session.exec(
+            select(LeaderboardEntry).where(LeaderboardEntry.course_id == c.id)
+        ).all()
+        out.append({
+            "id": c.id,
+            "name": c.name,
+            "buffer_m": c.buffer_m,
+            "gates": len(gates),
+            "entries": len(entries),
+        })
+    # newest first
+    out.sort(key=lambda x: x["id"], reverse=True)
+    return {"courses": out}
+
+@app.get("/api/admin/leaderboard/{course_id}")
+def admin_get_leaderboard(
+    course_id: int,
+    _admin: bool = Depends(require_admin),
+    session: Session = Depends(get_session),
+):
+    c = session.get(Course, course_id)
+    if not c:
+        raise HTTPException(404, "Course not found")
+    q = session.exec(
+        select(LeaderboardEntry)
+        .where(LeaderboardEntry.course_id == course_id)
+        .order_by(LeaderboardEntry.total_time_sec, LeaderboardEntry.id)
+    ).all()
+    entries = [{
+        "id": e.id,
+        "username": e.username,
+        "total_time_sec": e.total_time_sec,
+        "created_at": e.created_at.isoformat() + "Z",
+        "segments": json.loads(e.segment_times_json or "[]"),
+    } for e in q]
+    return {"course_id": course_id, "entries": entries}
+
+@app.delete("/api/admin/leaderboard/{entry_id}")
+def admin_delete_leaderboard_entry(
+    entry_id: int,
+    _admin: bool = Depends(require_admin),
+    session: Session = Depends(get_session),
+):
+    e = session.get(LeaderboardEntry, entry_id)
+    if not e:
+        raise HTTPException(404, "Entry not found")
+    session.delete(e)
+    session.commit()
+    return {"deleted": entry_id}
+
+@app.delete("/api/admin/leaderboard/by-course/{course_id}")
+def admin_clear_course_leaderboard(
+    course_id: int,
+    _admin: bool = Depends(require_admin),
+    session: Session = Depends(get_session),
+):
+    # ensure course exists
+    c = session.get(Course, course_id)
+    if not c:
+        raise HTTPException(404, "Course not found")
+    entries = session.exec(
+        select(LeaderboardEntry).where(LeaderboardEntry.course_id == course_id)
+    ).all()
+    for e in entries:
+        session.delete(e)
+    session.commit()
+    return {"cleared_for_course": course_id, "count": len(entries)}
+
+@app.delete("/api/admin/courses/{course_id}")
+def admin_delete_course(
+    course_id: int,
+    _admin: bool = Depends(require_admin),
+    session: Session = Depends(get_session),
+):
+    c = session.get(Course, course_id)
+    if not c:
+        raise HTTPException(404, "Course not found")
+    # delete leaderboard entries first (no FK cascade in this model)
+    entries = session.exec(
+        select(LeaderboardEntry).where(LeaderboardEntry.course_id == course_id)
+    ).all()
+    for e in entries:
+        session.delete(e)
+    session.delete(c)
+    session.commit()
+    return {"deleted_course": course_id, "deleted_entries": len(entries)}
+
+
 
 # Serve your static frontend from ./public (index.html at /)
 app.mount("/", StaticFiles(directory="public", html=True), name="public")
