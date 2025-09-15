@@ -84,6 +84,16 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="GPX Leaderboard API", version="0.2.0", lifespan=lifespan)
 
+FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "http://localhost:3000")
+SECRET_KEY = os.getenv("SECRET_KEY", "dev-please-change")
+
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=SECRET_KEY,
+    same_site="none",   # <-- important for cross-site cookies
+    https_only=True     # <-- required when SameSite=None
+)
+
 # CORS (relax for local dev; tighten in prod)
 app.add_middleware(
     CORSMiddleware,
@@ -96,6 +106,10 @@ app.add_middleware(
 app.add_middleware(SessionMiddleware, secret_key=os.getenv("SECRET_KEY", "dev-secret"))
 
 app.include_router(strava_router)
+
+@app.get("/healthz")
+def healthz():
+    return {"ok": True}
 
 # =============================================================================
 # GPX parsing & upload

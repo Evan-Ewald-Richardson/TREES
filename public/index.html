@@ -279,6 +279,16 @@
     </div>
     </div>
 </div>
+
+<script>
+    // TEMP backend domain
+    window.API_BASE = "https://trees-race-app-aqd6bva2etcfaaeb.canadacentral-01.azurewebsites.net";
+  
+    function API(path) {
+      return (window.API_BASE || "") + path;
+    }
+</script>
+
 <script>
 const { createApp } = Vue;
 
@@ -361,27 +371,26 @@ const app = createApp({
   methods: {
     /* -------------------- COURSES -------------------- */
     async apiGet(path) {
-        const res = await fetch(path);
+        const res = await fetch(API(path), { credentials: 'include' });
         if (!res.ok) {
-            let msg;
-            try { msg = (await res.json()).detail || await res.text(); } catch { msg = await res.text(); }
+            let msg; try { msg = (await res.json()).detail || await res.text(); } catch { msg = await res.text(); }
             throw new Error(msg);
         }
         return res.json();
-        },
+     },
 
         // [ADD] Courses: list
-        async loadCourses() {
+    async loadCourses() {
         try {
             this.courses = await this.apiGet("/courses");
         } catch (e) {
             console.error(e);
             this.courses = [];
         }
-        },
+    },
 
-        // [ADD] Courses: save current confirmed gates as a course
-        async saveCurrentGatesAsCourse() {
+    // [ADD] Courses: save current confirmed gates as a course
+    async saveCurrentGatesAsCourse() {
         const gates = this.gatePairsToApiPayload();
         if (!gates.length) { alert("Confirm at least one gate pair before saving."); return; }
         if (!this.newCourseName) { alert("Enter a course name."); return; }
@@ -399,10 +408,10 @@ const app = createApp({
         } catch (e) {
             alert(`Save failed: ${e.message || e}`);
         }
-        },
+    },
 
-        // [ADD] Courses: load selected course into the map + state
-        async loadSelectedCourse() {
+    // [ADD] Courses: load selected course into the map + state
+    async loadSelectedCourse() {
         if (!this.selectedCourseId) return;
         try {
             const c = await this.apiGet(`/courses/${this.selectedCourseId}`);
@@ -462,14 +471,14 @@ const app = createApp({
         },
     /* -------------------- API -------------------- */
     async apiPost(path, body) {
-        const res = await fetch(path, {
+        const res = await fetch(API(path), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
+            credentials: 'include',         // <-- important
             body: JSON.stringify(body)
         });
         if (!res.ok) {
-            let msg;
-            try { msg = (await res.json()).detail || await res.text(); } catch { msg = await res.text(); }
+            let msg; try { msg = (await res.json()).detail || await res.text(); } catch { msg = await res.text(); }
             throw new Error(msg);
         }
         return res.json();
@@ -519,7 +528,11 @@ const app = createApp({
       formData.append('gpxfile', file);
 
       try {
-        const resp = await fetch('/upload-gpx', { method: 'POST', body: formData });
+        const resp = await fetch(API('/upload-gpx'), {
+            method: 'POST',
+            body: formData,
+            credentials: 'include'
+        });
         if (!resp.ok) {
           const err = await resp.json().catch(() => ({ error: 'Upload failed' }));
           throw new Error(err.error || 'Upload failed');
@@ -748,7 +761,7 @@ const app = createApp({
     /* -------------------- STRAVA -------------------- */
     async checkStravaConnected() {
         try {
-            const res = await fetch('/api/strava/me');
+            const res = await fetch(API('/api/strava/me'), { credentials: 'include' });
             if (!res.ok) throw new Error(await res.text());
             this.strava.athlete = await res.json();
             this.strava.connected = true;
@@ -761,7 +774,7 @@ const app = createApp({
     },
 
     stravaLogin() {
-        window.location.href = '/api/strava/login';
+        window.location.href = API('/api/strava/login');
     },
     
     async fetchStravaActivities(page = this.strava.page) {
@@ -769,8 +782,8 @@ const app = createApp({
         this.strava.loading = true;
         this.strava.error = null;
         try {
-            const url = `/api/strava/activities?per_page=${this.strava.perPage}&page=${page}`;
-            const res = await fetch(url);
+            const url = API(`/api/strava/activities?per_page=${this.strava.perPage}&page=${page}`);
+            const res = await fetch(url, { credentials: 'include' });
             if (!res.ok) throw new Error(await res.text());
             const data = await res.json();
             // backend may return an array or {activities:[...]}
@@ -818,7 +831,7 @@ const app = createApp({
         }
         try {
             // reuse your import endpoint for points
-            const res = await fetch(`/api/strava/activities/${activityId}/points`);
+            const res = await fetch(API(`/api/strava/activities/${activityId}/points`), { credentials: 'include' });
             if (!res.ok) throw new Error(await res.text());
             const data = await res.json();
             const latlngs = (data.points || []).map(p => [p.lat, p.lon]);
@@ -836,7 +849,7 @@ const app = createApp({
 
     async importStravaActivity(activityId) {
         try {
-            const res = await fetch(`/api/strava/activities/${activityId}/points`);
+            const res = await fetch(API(`/api/strava/activities/${activityId}/points`), { credentials: 'include' });
             if (!res.ok) throw new Error(await res.text());
             const data = await res.json();
             const pts = data.points || [];

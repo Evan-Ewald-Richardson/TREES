@@ -1,6 +1,7 @@
 # routes_strava.py
 from __future__ import annotations
 import time
+import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -15,6 +16,8 @@ from settings import STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET, STRAVA_REDIRECT_URI
 from models_strava import StravaToken
 from strava_client import auth_url, exchange_code_for_token, refresh_access_token, api_get
 from db_core import get_session
+
+FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "http://localhost:3000")
 
 router = APIRouter(prefix="/api/strava", tags=["strava"])
 
@@ -87,7 +90,7 @@ async def strava_callback(code: Optional[str] = None, error: Optional[str] = Non
     # remember token id in session cookie
     request.session["strava_token_id"] = token.id
     # send the user back to your main app (or /console)
-    return RedirectResponse("/")
+    return RedirectResponse(url=f"{FRONTEND_ORIGIN}/?strava=ok", status_code=307)
 
 @router.post("/logout")
 async def strava_logout(request: Request):
