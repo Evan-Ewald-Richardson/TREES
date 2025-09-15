@@ -107,8 +107,8 @@ app.add_middleware(SessionMiddleware, secret_key=os.getenv("SECRET_KEY", "dev-se
 
 app.include_router(strava_router)
 
-@app.get("/healthz")
-def healthz():
+@app.get("/health")
+def health():
     return {"ok": True}
 
 # =============================================================================
