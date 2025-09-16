@@ -90,10 +90,6 @@ async def strava_callback(code: Optional[str] = None, error: Optional[str] = Non
 		raise HTTPException(400, detail=f"Strava error: {error}")
 	if not code:
 		raise HTTPException(400, detail="Missing code")
-	
-	# Debug logging
-	print(f"Strava callback received - code: {code}, error: {error}")
-	print(f"FRONTEND_ORIGIN: {FRONTEND_ORIGIN}")
 
 	data = await exchange_code_for_token(code)
 	# Extract athlete data
