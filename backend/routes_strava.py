@@ -15,10 +15,10 @@ from fastapi.responses import RedirectResponse, JSONResponse
 from starlette.responses import RedirectResponse, JSONResponse
 from sqlmodel import Session, select
 
-from settings import STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET, STRAVA_REDIRECT_URI
-from models_strava import StravaToken
-from strava_client import auth_url, exchange_code_for_token, refresh_access_token, api_get
-from db_core import get_session
+from .settings import STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET, STRAVA_REDIRECT_URI
+from .models_strava import StravaToken
+from .strava_client import auth_url, exchange_code_for_token, refresh_access_token, api_get
+from .db_core import get_session
 
 FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "http://localhost:3000")
 

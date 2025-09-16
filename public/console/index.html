@@ -59,7 +59,7 @@
 </div>
 
 <script>
-    // no manual Authorization header—browser will send it after /console auth
+    // Browser will send Authorization header after /console auth
     async function adminGet(path) {
       const res = await fetch(path);
       if (res.status === 401) {
@@ -84,11 +84,11 @@
 
 <script>
     document.addEventListener('DOMContentLoaded', () => {
-      // We are already behind /console Basic auth, so just load immediately
+      // Load courses immediately (already behind Basic auth)
       loadCourses();
     });
   
-    // keep these listeners
+    // Event listeners
     els.refreshBtn.addEventListener('click', loadCourses);
     els.loadEntries.addEventListener('click', loadEntries);
     els.clearEntries.addEventListener('click', clearEntries);
@@ -217,7 +217,7 @@
     await loadEntries();
   }
 
-  // Wire up
+  // Wire up event listeners
   els.refreshBtn.addEventListener('click', loadCourses);
   els.loadEntries.addEventListener('click', loadEntries);
   els.clearEntries.addEventListener('click', clearEntries);
