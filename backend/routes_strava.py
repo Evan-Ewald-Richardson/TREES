@@ -90,6 +90,10 @@ async def strava_callback(code: Optional[str] = None, error: Optional[str] = Non
 		raise HTTPException(400, detail=f"Strava error: {error}")
 	if not code:
 		raise HTTPException(400, detail="Missing code")
+	
+	# Debug logging
+	print(f"Strava callback received - code: {code}, error: {error}")
+	print(f"FRONTEND_ORIGIN: {FRONTEND_ORIGIN}")
 
 	data = await exchange_code_for_token(code)
 	# Extract athlete data
@@ -108,8 +112,11 @@ async def strava_callback(code: Optional[str] = None, error: Optional[str] = Non
 
 	# Store token ID in session
 	request.session["strava_token_id"] = token.id
-	# Redirect back to frontend
-	return RedirectResponse(url=f"{FRONTEND_ORIGIN}/?strava=ok", status_code=307)
+	# Redirect back to frontend - ensure proper URL formatting
+	frontend_origin = FRONTEND_ORIGIN.rstrip('/')
+	redirect_url = f"{frontend_origin}/?strava=ok"
+	print(f"Redirecting to: {redirect_url}")
+	return RedirectResponse(url=redirect_url, status_code=307)
 
 
 @router.post("/logout")
@@ -214,5 +221,7 @@ def strava_debug_config():
 	"""Debug configuration (no secrets)."""
 	return JSONResponse({
 		"client_id": STRAVA_CLIENT_ID,
-		"redirect_uri": STRAVA_REDIRECT_URI
+		"redirect_uri": STRAVA_REDIRECT_URI,
+		"frontend_origin": FRONTEND_ORIGIN,
+		"auth_url": auth_url("test")
 	})
