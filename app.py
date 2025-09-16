@@ -108,7 +108,7 @@ app.add_middleware(
 
 # CORS: allow any http/https origin *by regex* and echo it back (safe with credentials=True)
 from fastapi.middleware.cors import CORSMiddleware
-app.add_mmiddleware(
+app.add_middleware(
     CORSMiddleware,
     allow_origins=[],                          # empty because we'll use regex instead
     allow_origin_regex=r"^https?://.*$",       # temporarily allow any scheme+host
