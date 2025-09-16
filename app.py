@@ -516,7 +516,7 @@ def admin_delete_course(
 
 
 # Serve your static frontend from ./public (index.html at /)
-app.mount("/", StaticFiles(directory="public", html=True), name="public")
+# app.mount("/", StaticFiles(directory="public", html=True), name="public")
 
 # =============================================================================
 # Dev entrypoint
