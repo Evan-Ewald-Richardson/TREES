@@ -85,21 +85,6 @@ async def lifespan(app: FastAPI):
 # =============================================================================
 
 app = FastAPI(title="GPX Leaderboard API", version="0.2.0", lifespan=lifespan)
-
-# --- START OF MODIFICATIONS ---
-
-# 1. CORS Configuration:
-#    - Changed allow_origins from ["*"] to a dynamic list including the FRONTEND_ORIGIN
-#      from settings.py and localhost for development.
-#    - Changed allow_credentials from False to True, as the frontend uses 'credentials: "include"'.
-#    - It's critical that FRONTEND_ORIGIN environment variable is set in Azure to your SWA's URL.
-#    - For local development, 'http://localhost:3000' (or your dev server's URL) should be in FRONTEND_ORIGIN
-#      or explicitly added here.
-
-# Determine allowed origins based on FRONTEND_ORIGIN from settings
-# This ensures that your deployed frontend can access the API with credentials.
-# For local development, ensure FRONTEND_ORIGIN in your .env includes http://localhost:3000
-# or whatever port your dev server runs on.
 allowed_origins_list = []
 if FRONTEND_ORIGIN:
     # Handle multiple origins if comma-separated
@@ -115,27 +100,37 @@ if "https://nice-water-01234.azurestaticapps.net" not in allowed_origins_list:
 
 
 app.add_middleware(
-    CORSMiddleware,
-    allow_origins=allowed_origins_list, # Use the dynamically built list
-    allow_credentials=True,             # Changed to True for 'credentials: "include"'
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["*"],
+    SessionMiddleware,
+    secret_key=SECRET_KEY,
+    same_site="none",
+    https_only=True,
 )
 
-# 2. Session Middleware:
-#    - Added SessionMiddleware, essential for Strava OAuth to function correctly
-#      as it relies on session cookies.
-#    - Uses SECRET_KEY imported from settings.py.
-app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY)
-
-# --- END OF MODIFICATIONS ---
+# CORS: allow any http/https origin *by regex* and echo it back (safe with credentials=True)
+from fastapi.middleware.cors import CORSMiddleware
+app.add_mmiddleware(
+    CORSMiddleware,
+    allow_origins=[],                          # empty because we'll use regex instead
+    allow_origin_regex=r"^https?://.*$",       # temporarily allow any scheme+host
+    allow_credentials=True,                    # needed for session cookie
+    allow_methods=["*"],                       # include GET/POST/PUT/PATCH/DELETE/OPTIONS
+    allow_headers=["*"],                       # accept whatever the browser requests
+    expose_headers=["*"],
+)
 
 app.include_router(strava_router)
 
 @app.get("/health")
 def health():
     return {"ok": True}
+
+@app.get("/_debug/cors")
+def debug_cors(request: Request):
+    return {
+        "seen_origin": request.headers.get("origin"),
+        "acr_method": request.headers.get("access-control-request-method"),
+        "acr_headers": request.headers.get("access-control-request-headers"),
+    }
 
 # =============================================================================
 # GPX parsing & upload
