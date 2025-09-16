@@ -1,7 +1,7 @@
+# settings.py
 import os
 from dotenv import load_dotenv
 
-# Load .env once, early
 load_dotenv(override=False)
 
 def _require_env(name: str) -> str:
@@ -25,4 +25,5 @@ ADMIN_USER = os.getenv("ADMIN_USER", "admin")
 ADMIN_PASS = os.getenv("ADMIN_PASS", "changeme")
 
 # App secret (for state tokens, etc)
-SECRET_KEY = os.getenv("SECRET_KEY", "dev-please-change")
+SECRET_KEY = _require_env("SECRET_KEY") # Ensure this is required now
+FRONTEND_ORIGIN = _require_env("FRONTEND_ORIGIN") # Added this

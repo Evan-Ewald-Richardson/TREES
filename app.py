@@ -18,10 +18,12 @@ from fastapi.responses import FileResponse
 from sqlmodel import Field as ORMField, SQLModel, Session, create_engine, select
 from dotenv import load_dotenv, find_dotenv
 from starlette.responses import FileResponse, Response
-from starlette.middleware.sessions import SessionMiddleware
+from starlette.middleware.sessions import SessionMiddleware # Already imported
+from urllib.parse import urlparse # Added for parsing frontend origin
 
 from routes_strava import router as strava_router
 from db_core import engine, get_session
+from settings import SECRET_KEY, FRONTEND_ORIGIN # Added import for SECRET_KEY and FRONTEND_ORIGIN
 
 # =============================================================================
 # Admin auth
@@ -84,14 +86,50 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="GPX Leaderboard API", version="0.2.0", lifespan=lifespan)
 
+# --- START OF MODIFICATIONS ---
+
+# 1. CORS Configuration:
+#    - Changed allow_origins from ["*"] to a dynamic list including the FRONTEND_ORIGIN
+#      from settings.py and localhost for development.
+#    - Changed allow_credentials from False to True, as the frontend uses 'credentials: "include"'.
+#    - It's critical that FRONTEND_ORIGIN environment variable is set in Azure to your SWA's URL.
+#    - For local development, 'http://localhost:3000' (or your dev server's URL) should be in FRONTEND_ORIGIN
+#      or explicitly added here.
+
+# Determine allowed origins based on FRONTEND_ORIGIN from settings
+# This ensures that your deployed frontend can access the API with credentials.
+# For local development, ensure FRONTEND_ORIGIN in your .env includes http://localhost:3000
+# or whatever port your dev server runs on.
+allowed_origins_list = []
+if FRONTEND_ORIGIN:
+    # Handle multiple origins if comma-separated
+    origins_from_env = [o.strip() for o in FRONTEND_ORIGIN.split(',') if o.strip()]
+    allowed_origins_list.extend(origins_from_env)
+
+# Always allow localhost for local development (if not already included)
+if "http://localhost:3000" not in allowed_origins_list:
+    allowed_origins_list.append("http://localhost:3000")
+# Add the Azure default SWA development origin as well
+if "https://nice-water-01234.azurestaticapps.net" not in allowed_origins_list:
+    allowed_origins_list.append("https://nice-water-01234.azurestaticapps.net")
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
+    allow_origins=allowed_origins_list, # Use the dynamically built list
+    allow_credentials=True,             # Changed to True for 'credentials: "include"'
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
 )
+
+# 2. Session Middleware:
+#    - Added SessionMiddleware, essential for Strava OAuth to function correctly
+#      as it relies on session cookies.
+#    - Uses SECRET_KEY imported from settings.py.
+app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY)
+
+# --- END OF MODIFICATIONS ---
 
 app.include_router(strava_router)
 
@@ -200,7 +238,9 @@ def points_near_with_time(points: List[Dict[str, Any]], target: Dict[str, float]
         if not t:
             continue
         try:
-            t_ms = datetime.fromisoformat(t.replace("Z", "+00:00")).timestamp() * 1000
+            # Handle ISO format with or without 'Z' and ensure timezone info for timestamp()
+            t_dt = datetime.fromisoformat(t.replace("Z", "+00:00"))
+            t_ms = t_dt.timestamp() * 1000
         except Exception:
             continue
         if haversine_m(p["lat"], p["lon"], target["lat"], target["lon"]) <= radius_m:
