@@ -13,7 +13,7 @@ import gpxpy
 from fastapi import Body, Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
-from sqlmodel import Field as ORMField, SQLModel, Session, select
+from sqlmodel import Field as ORMField, SQLModel, Session, func, select
 from starlette.middleware.sessions import SessionMiddleware
 
 from .db_core import engine, get_session
@@ -378,6 +378,7 @@ def course_to_dict(c: Course) -> Dict[str, Any]:
         "name": c.name,
         "buffer_m": c.buffer_m,
         "gates": gates,
+        "gate_count": len(gates),
         "created_by": c.created_by,
         "description": c.description,
         "image_url": c.image_url,
@@ -770,6 +771,12 @@ def courses_summary(session: Session = Depends(get_session)):
     courses = session.exec(select(Course)).all()
     out = []
     for c in courses:
+        leaderboard_count = session.exec(
+            select(func.count(LeaderboardEntry.id)).where(
+                LeaderboardEntry.course_id == c.id
+            )
+        ).one()
+        
         winner = session.exec(
             select(LeaderboardEntry)
             .where(LeaderboardEntry.course_id == c.id)
@@ -779,6 +786,7 @@ def courses_summary(session: Session = Depends(get_session)):
         out.append(
             {
                 **course_to_dict(c),
+                "leaderboard_count": leaderboard_count,
                 "first_place": (
                     {
                         "username": winner.username,

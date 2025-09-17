@@ -29,7 +29,7 @@ $backendLines = @()
 if ($activate) { $backendLines += $activate }
 $backendLines += "`$env:FRONTEND_ORIGIN = '$frontendOrigin'"
 if ($DBReset) { $backendLines += "`$env:DB_RESET = '1'" }
-$backendLines += "uvicorn backend.app:app --host 127.0.0.1 --port $BackendPort"
+$backendLines += "uvicorn backend.app:app --host 127.0.0.1 --port $BackendPort --reload"
 $backendCmd = ($backendLines -join "`r`n")
 
 New-Terminal -WorkingDir $publicDir -Command $frontendCmd

@@ -1102,22 +1102,31 @@ input:focus, select:focus, textarea:focus, button:focus{ outline:2px solid var(-
 
                       <div style="padding:10px;">
                         <div style="font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ c.name }}</div>
-                        <div class="muted" style="font-size:12px; margin:4px 0 8px; height:32px; overflow:hidden; text-overflow:ellipsis;">
+                        <div class="muted" style="font-size:12px; margin:4px 0 8px; min-height:32px; overflow:hidden; text-overflow:ellipsis;">
                           {{ c.description || 'No description' }}
                         </div>
 
                         <div class="muted" style="font-size:12px; margin-bottom:6px;">
+                          Gates: <strong>{{ courseGateCount(c) }}</strong> • Buffer: <strong>{{ c.buffer_m }}m</strong>
+                        </div>
+                        <div class="muted" style="font-size:12px; margin-bottom:6px;">
+                          Leaderboard entries: <strong>{{ courseLeaderboardCount(c) }}</strong>
+                        </div>
+                        <div class="muted" style="font-size:12px; margin-bottom:6px;">
+                          Created: <strong>{{ formatDate(c.created_at) }}</strong>
+                        </div>
+                        <div class="muted" style="font-size:12px; margin-bottom:10px;">
                           Created by: <strong>{{ c.created_by || '—' }}</strong>
                         </div>
 
                         <!-- Mini leaderboard -->
                         <div style="display:flex; align-items:center; justify-content:space-between; font-size:12px; border:1px solid var(--border); border-radius:8px; padding:6px 8px;">
-                          <div class="muted">First place</div>
+                          <div class="muted">Fastest time</div>
                           <div v-if="c.first_place" style="display:flex; gap:6px; align-items:center;">
                             <strong>{{ c.first_place.username }}</strong>
-                            <span class="badge success">{{ c.first_place.total_time_sec }}s</span>
+                            <span class="badge success">{{ formatSeconds(c.first_place.total_time_sec) }}</span>
                           </div>
-                          <div v-else class="muted">N/A</div>
+                          <div v-else class="muted">No results yet</div>
                         </div>
 
                         <div style="display:flex; gap:8px; margin-top:8px; justify-content:flex-end;">
@@ -1278,6 +1287,7 @@ const app = createApp({
           activePanel: null,
         },
         coursesGrid: [], // from /courses_summary
+        refreshingCourses: false, // guard to prevent overlapping refreshes
         newCourse: { name: "", description: "", imageFile: null, imagePreview: null },
 
         // Data
@@ -1407,6 +1417,11 @@ const app = createApp({
   },
 
   methods: {
+    // Expose API helper for templates and methods
+    API(path) {
+      try { return (window.API ? window.API(path) : (window.API_BASE || '') + path); }
+      catch { return path; }
+    },
     /* -------------------- PANEL MANAGEMENT -------------------- */
     invalidateMap() {
       if (!this.map) return;
@@ -1437,6 +1452,13 @@ const app = createApp({
     togglePanel(panel) {
       const next = this.ui.activePanel === panel ? null : panel;
       this.setActivePanel(next);
+    },
+    openCoursesModal() {
+      if (this.ui.activePanel === 'courses') {
+        this.refreshCoursesGrid();
+      } else {
+        this.setActivePanel('courses');
+      }
     },
     closePanels() {
       this.setActivePanel(null);
@@ -1624,11 +1646,44 @@ const app = createApp({
      },
 
     async refreshCoursesGrid() {
+      if (this.refreshingCourses) return;
+      this.refreshingCourses = true;
       try {
-        this.coursesGrid = await this.apiGet("/courses_summary");
-      } catch (e) {
-        console.error(e); this.coursesGrid = [];
+        await this.loadCourses();
+      } finally {
+        this.refreshingCourses = false;
       }
+    },
+    formatDate(iso) {
+      if (!iso) return '—';
+      const date = new Date(iso);
+      if (Number.isNaN(date.getTime())) return '—';
+      return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    },
+    formatSeconds(total) {
+      const n = Number(total);
+      if (!Number.isFinite(n) || n < 0) return '—';
+      if (n < 60) {
+        return `${Math.round(n)}s`;
+      }
+      const hours = Math.floor(n / 3600);
+      const minutes = Math.floor((n % 3600) / 60);
+      const seconds = Math.round(n % 60);
+      const mm = hours ? String(minutes).padStart(2, '0') : String(minutes);
+      const ss = String(seconds).padStart(2, '0');
+      return hours ? `${hours}:${mm}:${ss}` : `${minutes}:${ss}`;
+    },
+    courseGateCount(course) {
+      if (!course) return 0;
+      if (typeof course.gate_count === 'number') return course.gate_count;
+      if (Array.isArray(course.gates)) return course.gates.length;
+      return 0;
+    },
+    courseLeaderboardCount(course) {
+      if (!course) return 0;
+      if (typeof course.leaderboard_count === 'number') return course.leaderboard_count;
+      if (Array.isArray(course.leaderboard)) return course.leaderboard.length;
+      return course.first_place ? 1 : 0;
     },
     loadCourseCard(id) {
       this.closePanels();
@@ -1683,8 +1738,7 @@ const app = createApp({
         if (this.newCourse.imagePreview) URL.revokeObjectURL(this.newCourse.imagePreview);
         this.newCourse = { name: "", description: "", imageFile: null, imagePreview: null };
         this.closePanels();
-        await this.loadCourses();           // refresh select list
-        await this.refreshCoursesGrid();    // refresh cards
+        await this.loadCourses();           // refresh select list + cards
         this.selectedCourseId = created.id;
         await this.loadSelectedCourse();
       } catch (e) {
@@ -1695,12 +1749,26 @@ const app = createApp({
         // [ADD] Courses: list
     async loadCourses() {
         try {
-            this.courses = await this.apiGet("/courses");
+            const data = await this.apiGet("/courses_summary");
+            const normalized = (Array.isArray(data) ? data : [])
+                .map(c => ({
+                    ...c,
+                    gates: Array.isArray(c.gates) ? c.gates : [],
+                }));
+            this.courses = normalized;
+            this.coursesGrid = normalized
+                .slice()
+                .sort((a, b) => {
+                    const aTime = a.created_at ? Date.parse(a.created_at) : 0;
+                    const bTime = b.created_at ? Date.parse(b.created_at) : 0;
+                    return bTime - aTime;
+                });
         } catch (e) {
             console.error(e);
             this.courses = [];
+            this.coursesGrid = [];
         }
-},
+    },
 
     // [ADD] Courses: load selected course into the map + state
     async loadSelectedCourse() {
