@@ -17,6 +17,7 @@ from sqlmodel import SQLModel, Field as ORMField, Session, select
 
 from .db_core import get_session
 from .settings import STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET, STRAVA_REDIRECT_URI
+from .utils import utcnow
 
 # =============================================================================
 # Configuration
@@ -45,7 +46,8 @@ class StravaToken(SQLModel, table=True):
     refresh_token: str
     expires_at: int  # Unix timestamp
     scope: Optional[str] = None
-    created_at: datetime = ORMField(default_factory=datetime.now(timezone.utc))
+    created_at: datetime = ORMField(default_factory=utcnow)
+
 
 
 # =============================================================================

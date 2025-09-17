@@ -6,7 +6,7 @@ import json
 import math
 import os
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 import gpxpy
@@ -30,6 +30,7 @@ from .settings import (
 )
 from .routers.auth import router as auth_router
 from .strava import router as strava_router
+from .utils import utcnow
 
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -51,7 +52,7 @@ class Course(SQLModel, table=True):
     created_by: Optional[str] = None
     description: Optional[str] = None
     image_url: Optional[str] = None
-    created_at: datetime = ORMField(default_factory=datetime.now(timezone.utc))
+    created_at: datetime = ORMField(default_factory=utcnow)
 
 
 class User(SQLModel, table=True):
@@ -59,7 +60,7 @@ class User(SQLModel, table=True):
 
     id: Optional[int] = ORMField(default=None, primary_key=True)
     name: str = ORMField(index=True, unique=True)
-    created_at: datetime = ORMField(default_factory=datetime.now(timezone.utc))
+    created_at: datetime = ORMField(default_factory=utcnow)
 
 
 class LeaderboardEntry(SQLModel, table=True):
@@ -70,7 +71,7 @@ class LeaderboardEntry(SQLModel, table=True):
     username: str
     total_time_sec: int
     segment_times_json: str  # JSON: [{"segment":"Pair 1","timeSec":123}, ...]
-    created_at: datetime = ORMField(default_factory=datetime.now(timezone.utc))
+    created_at: datetime = ORMField(default_factory=utcnow)
 
 
 # =============================================================================
@@ -639,9 +640,7 @@ def submit_result(
         if int(total) < existing_entry.total_time_sec:
             existing_entry.total_time_sec = int(total)
             existing_entry.segment_times_json = json.dumps(segs)
-            existing_entry.created_at = datetime.now(
-                timezone.utc
-            )()  # Update timestamp for new record
+            existing_entry.created_at = utcnow()
             session.add(existing_entry)
             session.commit()
             session.refresh(existing_entry)

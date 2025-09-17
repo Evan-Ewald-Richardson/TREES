@@ -206,13 +206,23 @@ def me_profile(request: Request, session: Session = Depends(get_session)):
 
     leaderboard_positions = []
     for row in leaderboard_result:
+        _created_at = row.created_at
+        if isinstance(_created_at, str):
+            created_at_out = _created_at
+        elif _created_at is not None:
+            try:
+                created_at_out = _created_at.isoformat() + ("" if _created_at.tzinfo else "Z")
+            except Exception:
+                created_at_out = str(_created_at)
+        else:
+            created_at_out = None
         leaderboard_positions.append({
             "id": row.id,
             "courseId": row.course_id,
             "courseName": row.course_name,
             "rank": row.rank,
             "time": row.total_time_sec,
-            "created_at": row.created_at.isoformat() + "Z" if row.created_at else None,
+            "created_at": created_at_out,
         })
 
     return JSONResponse({
