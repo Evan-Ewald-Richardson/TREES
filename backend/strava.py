@@ -6,7 +6,7 @@ Complete Strava OAuth authentication and API integration in one place.
 from __future__ import annotations
 import time
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlencode
 
@@ -22,7 +22,7 @@ from .settings import STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET, STRAVA_REDIRECT_UR
 # Configuration
 # =============================================================================
 
-FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "http://localhost:3000")
+from .settings import FRONTEND_ORIGIN
 
 # Strava API endpoints
 AUTH_BASE = "https://www.strava.com/oauth/authorize"
@@ -43,7 +43,7 @@ class StravaToken(SQLModel, table=True):
 	refresh_token: str
 	expires_at: int  # Unix timestamp
 	scope: Optional[str] = None
-	created_at: datetime = ORMField(default_factory=datetime.utcnow)
+	created_at: datetime = ORMField(default_factory=datetime.now(timezone.utc))
 
 # =============================================================================
 # API Client Functions
@@ -249,7 +249,7 @@ async def activity_points(activity_id: int, request: Request, session: Session =
 		ele = alts[i] if i < len(alts) else None
 		if tsec is None:
 			continue
-		t_iso = datetime.utcfromtimestamp((start_ms/1000.0) + tsec).isoformat() + "Z"
+		t_iso = datetime.now(timezone.utc)fromtimestamp((start_ms/1000.0) + tsec).isoformat() + "Z"
 		points.append({
 			"lat": ll[0],
 			"lon": ll[1],

@@ -46,7 +46,7 @@ else:
         client_kwargs={"scope": "openid email profile"},
     )
 
-FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "http://127.0.0.1:5500")
+from backend.settings import FRONTEND_ORIGIN
 OAUTH_REDIRECT_URL = os.getenv("OAUTH_REDIRECT_URL", "http://127.0.0.1:3000/auth/google/callback")
 
 router = APIRouter(tags=["auth"])
@@ -151,56 +151,70 @@ def me_profile(request: Request, session: Session = Depends(get_session)):
     
     # Use raw SQL to avoid circular imports - query the tables directly
     from sqlalchemy import text
-    
-    # Get user's created courses
+
+    # Get user's created courses with full fields
     courses_result = session.execute(
         text("""
-        SELECT id, name, buffer_m, 
-               (SELECT COUNT(*) FROM leaderboard_entry WHERE course_id = course.id) as entries
-        FROM course 
-        WHERE created_by = :user_name 
+        SELECT id, name, buffer_m, gates_json, created_by, description, image_url, created_at
+        FROM course
+        WHERE created_by = :user_name
         ORDER BY id DESC
         """),
         {"user_name": user_name}
     )
-    
+
+    import json as _json
     created_courses = []
     for row in courses_result:
+        _created_at = row.created_at
+        if isinstance(_created_at, str):
+            created_at_out = _created_at
+        elif _created_at is not None:
+            try:
+                created_at_out = _created_at.isoformat() + ("" if _created_at.tzinfo else "Z")
+            except Exception:
+                created_at_out = str(_created_at)
+        else:
+            created_at_out = None
+
         created_courses.append({
             "id": row.id,
             "name": row.name,
             "buffer_m": row.buffer_m,
-            "entries": row.entries,
-            "created_at": row.id  # Using ID as proxy for creation time
+            "gates": _json.loads(row.gates_json or "[]"),
+            "created_by": row.created_by,
+            "description": row.description,
+            "image_url": row.image_url,
+            "created_at": created_at_out,
         })
-    
-    # Get user's leaderboard positions
+
+    # Get user's leaderboard positions (table name is 'leaderboardentry' by SQLModel default)
     leaderboard_result = session.execute(
         text("""
         SELECT le.id, le.course_id, le.total_time_sec, le.created_at,
                c.name as course_name,
-               (SELECT COUNT(*) FROM leaderboard_entry le2 
+               (SELECT COUNT(*) FROM leaderboardentry le2 
                 WHERE le2.course_id = le.course_id 
                 AND le2.total_time_sec < le.total_time_sec) + 1 as rank
-        FROM leaderboard_entry le
+        FROM leaderboardentry le
         JOIN course c ON c.id = le.course_id
         WHERE le.username = :user_name
         ORDER BY le.total_time_sec
         """),
         {"user_name": user_name}
     )
-    
+
     leaderboard_positions = []
     for row in leaderboard_result:
         leaderboard_positions.append({
             "id": row.id,
-            "course_id": row.course_id,
-            "course_name": row.course_name,
-            "total_time_sec": row.total_time_sec,
+            "courseId": row.course_id,
+            "courseName": row.course_name,
             "rank": row.rank,
-            "created_at": row.created_at.isoformat() + "Z"
+            "time": row.total_time_sec,
+            "created_at": row.created_at.isoformat() + "Z" if row.created_at else None,
         })
-    
+
     return JSONResponse({
         "createdCourses": created_courses,
         "leaderboardPositions": leaderboard_positions

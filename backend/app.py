@@ -9,15 +9,16 @@ import os
 import json
 import math
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 import gpxpy
-from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, Body, status, Request
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, Body, status, Request, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from sqlmodel import Field as ORMField, SQLModel, Session, create_engine, select
+from sqlmodel import Field as ORMField, SQLModel, Session, select
+from pathlib import Path
 from dotenv import load_dotenv, find_dotenv
 from starlette.responses import FileResponse, Response, JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
@@ -28,6 +29,13 @@ from .settings import SECRET_KEY, FRONTEND_ORIGIN
 
 # Load environment variables
 load_dotenv(find_dotenv(), override=False)
+
+# DB Reset toggle
+DB_RESET = os.getenv("DB_RESET", "0").lower() in ("1","true","yes")
+
+# Upload directory setup
+UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "uploads"))
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 def env_bool(name: str, default: bool) -> bool:
     v = os.getenv(name, str(default)).lower()
@@ -40,8 +48,7 @@ def is_super(user_name: str) -> bool:
     return bool(user_name) and user_name == SUPER_USER_NAME
 
 # OAuth and cookie configuration
-FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "http://127.0.0.1:5173")
-SECRET_KEY = os.getenv("SECRET_KEY", "dev_please_override")
+from .settings import SECRET_KEY, FRONTEND_ORIGIN
 COOKIE_DOMAIN = os.getenv("COOKIE_DOMAIN") or None
 COOKIE_SECURE = env_bool("COOKIE_SECURE", False)
 COOKIE_SAMESITE = os.getenv("COOKIE_SAMESITE", "lax")  # 'lax' | 'none' | 'strict'
@@ -50,19 +57,21 @@ COOKIE_SAMESITE = os.getenv("COOKIE_SAMESITE", "lax")  # 'lax' | 'none' | 'stric
 # =============================================================================
 
 class Course(SQLModel, table=True):
-	"""Course model for storing gate pair configurations."""
-	id: Optional[int] = ORMField(default=None, primary_key=True)
-	name: str
-	buffer_m: int = 10
-	gates_json: str  # JSON: [{"pairId":1,"name":"Gate Pair 1","start":{"lat":..,"lon":..},"end":{"lat":..,"lon":..}}, "checkpoints": [{"lat":..,"lon":..}, ...], ...]
-	created_by: Optional[str] = None  # Username of creator
+    id: Optional[int] = ORMField(default=None, primary_key=True)
+    name: str
+    buffer_m: int = 10
+    gates_json: str
+    created_by: Optional[str] = None
+    description: Optional[str] = None
+    image_url: Optional[str] = None
+    created_at: datetime = ORMField(default_factory=datetime.now(timezone.utc))
 
 
 class User(SQLModel, table=True):
 	"""User model for basic authentication."""
 	id: Optional[int] = ORMField(default=None, primary_key=True)
 	name: str = ORMField(index=True, unique=True)
-	created_at: datetime = ORMField(default_factory=datetime.utcnow)
+	created_at: datetime = ORMField(default_factory=datetime.now(timezone.utc))
 
 
 class LeaderboardEntry(SQLModel, table=True):
@@ -72,7 +81,7 @@ class LeaderboardEntry(SQLModel, table=True):
 	username: str
 	total_time_sec: int
 	segment_times_json: str  # JSON: [{"segment":"Pair 1","timeSec":123}, ...]
-	created_at: datetime = ORMField(default_factory=datetime.utcnow)
+	created_at: datetime = ORMField(default_factory=datetime.now(timezone.utc))
 
 # =============================================================================
 # Application Lifespan
@@ -81,11 +90,10 @@ class LeaderboardEntry(SQLModel, table=True):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-	"""Manage application startup and shutdown."""
-	# Startup
-	SQLModel.metadata.create_all(engine)
-	yield
-	# Shutdown (nothing specific to clean up for SQLite)
+    if DB_RESET:
+        SQLModel.metadata.drop_all(engine)
+    SQLModel.metadata.create_all(engine)
+    yield
 
 
 # =============================================================================
@@ -111,7 +119,7 @@ if "https://nice-water-01234.azurestaticapps.net" not in allowed_origins_list:
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[FRONTEND_ORIGIN],
+    allow_origins=allowed_origins_list,
     allow_credentials=True,
     allow_methods=["GET","POST","PATCH","DELETE","OPTIONS"],
     allow_headers=["*"],
@@ -351,7 +359,17 @@ def gates_from_course(c: Course) -> List[Dict[str, Any]]:
 
 def course_to_dict(c: Course) -> Dict[str, Any]:
 	"""Convert course to dictionary format."""
-	return {"id": c.id, "name": c.name, "buffer_m": c.buffer_m, "gates": gates_from_course(c), "created_by": c.created_by}
+	gates = json.loads(c.gates_json or "[]")
+	return {
+		"id": c.id,
+		"name": c.name,
+		"buffer_m": c.buffer_m,
+		"gates": gates,
+		"created_by": c.created_by,
+		"description": c.description,
+		"image_url": c.image_url,
+		"created_at": c.created_at.isoformat() if c.created_at else None,
+	}
 
 
 # =============================================================================
@@ -362,15 +380,15 @@ def course_to_dict(c: Course) -> Dict[str, Any]:
 @app.post("/courses")
 def create_course(body: Dict[str, Any], session: Session = Depends(get_session)):
 	"""Create a new course with gate pairs."""
-	name = (body.get("name") or "").strip()
+	name = body.get("name")
 	buffer_m = int(body.get("buffer_m") or 10)
 	gates = body.get("gates") or []
-	created_by = (body.get("created_by") or "").strip() or None
+	created_by = body.get("created_by")
+	description = body.get("description")  # NEW
+	image_url = body.get("image_url")      # NEW (usually None until upload)
 
-	if not name:
-		raise HTTPException(400, "Course name required")
-	if not gates:
-		raise HTTPException(400, "Course must include at least one gate pair")
+	if not name or not isinstance(gates, list) or not gates:
+		raise HTTPException(status_code=400, detail="Name and at least one gate are required")
 
 	# Validate gate pair structure
 	for g in gates:
@@ -381,7 +399,14 @@ def create_course(body: Dict[str, Any], session: Session = Depends(get_session))
 			if not isinstance(cps, list) or any(not {"lat", "lon"} <= set(cp.keys()) for cp in cps):
 				raise HTTPException(400, "Invalid checkpoints payload")
 
-	c = Course(name=name, buffer_m=buffer_m, gates_json=json.dumps(gates), created_by=created_by)
+	c = Course(
+		name=name,
+		buffer_m=buffer_m,
+		gates_json=json.dumps(gates),
+		created_by=created_by,
+		description=description,
+		image_url=image_url,
+	)
 	session.add(c)
 	session.commit()
 	session.refresh(c)
@@ -590,7 +615,7 @@ def submit_result(course_id: int, body: Dict[str, Any], session: Session = Depen
 		if int(total) < existing_entry.total_time_sec:
 			existing_entry.total_time_sec = int(total)
 			existing_entry.segment_times_json = json.dumps(segs)
-			existing_entry.created_at = datetime.utcnow()  # Update timestamp for new record
+			existing_entry.created_at = datetime.now(timezone.utc)()  # Update timestamp for new record
 			session.add(existing_entry)
 			session.commit()
 			session.refresh(existing_entry)
@@ -670,6 +695,64 @@ def segment_times(payload: Dict[str, Any] = Body(...)):
 	segs = compute_segment_times(points, gates, buffer_m)
 	return {"segments": segs}
 
+
+# =============================================================================
+# Course Image Upload
+# =============================================================================
+
+@app.post("/courses/{course_id}/image")
+async def upload_course_image(course_id: int, file: UploadFile = File(...), session: Session = Depends(get_session)):
+	"""Upload an image for a course."""
+	c = session.get(Course, course_id)
+	if not c:
+		raise HTTPException(404, "Course not found")
+
+	ext = (os.path.splitext(file.filename or "")[1] or ".jpg").lower()
+	if ext not in [".jpg", ".jpeg", ".png", ".webp"]:
+		raise HTTPException(400, "Unsupported image type")
+
+	fname = f"course_{course_id}{ext}"
+	dest = UPLOAD_DIR / fname
+	data = await file.read()
+	dest.write_bytes(data)
+
+	# Expose via static route (below) or your CDN
+	c.image_url = f"/uploads/{fname}"
+	session.add(c)
+	session.commit()
+	session.refresh(c)
+	return {"ok": True, "image_url": c.image_url}
+
+
+@app.get("/uploads/{path}")
+def serve_upload(path: str):
+	"""Serve uploaded files."""
+	file_path = UPLOAD_DIR / path
+	if not file_path.exists():
+		raise HTTPException(404, "File not found")
+	return FileResponse(file_path)
+
+
+@app.get("/courses_summary")
+def courses_summary(session: Session = Depends(get_session)):
+	"""Get courses with first place leaderboard data."""
+	courses = session.exec(select(Course)).all()
+	out = []
+	for c in courses:
+		winner = session.exec(
+			select(LeaderboardEntry)
+			.where(LeaderboardEntry.course_id == c.id)
+			.order_by(LeaderboardEntry.total_time_sec.asc())
+			.limit(1)
+		).first()
+		out.append({
+			**course_to_dict(c),
+			"first_place": (
+				{"username": winner.username, "total_time_sec": winner.total_time_sec}
+				if winner else None
+			)
+		})
+	return out
 
 
 # =============================================================================
