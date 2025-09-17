@@ -9,15 +9,23 @@
   <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
   <style>
     body { margin:0; font-family: Arial, sans-serif; }
-    .container { display:flex; height:100vh; }
-    .left { width:700px; border-right:1px solid #e5e7eb; padding:16px; overflow:auto; background:#fafafa; }
-    .right { flex:1; display:flex; }
-    .map { flex:1; }
+    /* Legacy styles removed - using new viewport layout */
     h1 { margin:0 0 4px 0; font-size:36px; }
     .section { background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:12px; margin-top:12px; }
-    .upload { border:2px dashed #d1d5db; padding:16px; text-align:center; border-radius:8px; background:#fcfcfc; }
-    .upload.dragover { background:#eef6ff; border-color:#3b82f6; }
-    button { cursor:pointer; border:0; border-radius:6px; padding:8px 12px; background:#2563eb; color:white; }
+    .upload { 
+      border:2px dashed var(--border); 
+      padding:20px; 
+      text-align:center; 
+      border-radius:var(--radius); 
+      background:var(--surface-2);
+      transition:all 0.2s ease;
+    }
+    .upload.dragover { 
+      background:rgba(109, 235, 85, 0.1); 
+      border-color:var(--brand-500);
+      transform:translateY(-2px);
+      box-shadow:var(--shadow);
+    }
     button:disabled { background:#9ca3af; cursor:not-allowed; }
     .muted { color:#6b7280; font-size:16px; }
     .row { display:flex; gap:8px; flex-wrap:wrap; }
@@ -32,260 +40,1093 @@
     .end { background:#e5e7eb; color:#111827; }
     .status { font-size:14px; font-weight:700; color:#b45309; }
     .ok { color:#065f46; }
+
+/* ===== Forest Design System: tokens (LIGHT as default) ===== */
+:root{
+  /* brand / forest tones - from Realtime Colors */
+  --brand-500:#6deb55; /* primary bright green */
+  --brand-600:#5dd145; /* darker primary */
+  --brand-700:#4db835; /* darkest primary */
+
+  /* auxiliary colors */
+  --secondary:#acc6d2; /* light blue */
+  --accent:#7f8cb9;    /* muted blue */
+
+  /* neutrals (light) */
+  --bg:#f9fcf9;         /* very light green background */
+  --surface-1:#ffffff;  /* pure white cards */
+  --surface-2:#f2f6f2;  /* slightly darker panels */
+  --text:#0e160c;       /* dark green text */
+  --muted:#4a5c47;      /* muted green text */
+  --border:#e1e8e1;     /* light green border */
+
+  /* states */
+  --success:#6deb55;    /* use primary for success */
+  --warn:#f59e0b;       /* amber warning */
+  --warn-600:#d97706;   /* darker amber for hover */
+  --danger:#ef4444;     /* red danger */
+  --danger-600:#dc2626; /* darker red for hover */
+
+  /* shape */
+  --radius:12px;
+  --radius-sm:8px;
+  --shadow:0 4px 16px rgba(14,22,12,.08);
+}
+
+
+/* ===== App frame refresh ===== */
+html, body { 
+  height:100%; 
+  margin:0;
+  padding:0;
+  overflow:hidden; /* Prevent page scrolling */
+}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+}
+
+/* Fixed viewport layout */
+#app {
+  height:100vh;
+  display:flex;
+  flex-direction:column; /* header on top, container fills the rest */
+}
+
+.container {
+  display:flex;
+  flex:1;       /* take remaining space below the header */
+  height:auto;  /* no fixed height; flex handles it */
+}
+
+/* Keep existing layout, just enhance */
+.left{
+  position: relative;
+  background: var(--surface-2);
+  border-right: 1px solid var(--border);
+  padding: 16px;
+  /* initial width, but flexible */
+  width: clamp(320px, 32vw, 560px);
+  min-width: 320px;
+  max-width: 75vw;
+
+  /* scrolling inside the panel */
+  overflow-y: auto;
+  overflow-x: hidden;
+
+  height: 100%;
+  box-sizing: border-box;
+  flex: 0 0 auto;    /* don't stretch */
+  /* remove native browser handle */
+  resize: none;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) var(--surface-2);
+}
+
+/* Let flex children shrink and scroll */
+.container, .left, .right { min-height: 0; }
+
+/* Full-height, thin grab area on the right edge */
+.left .resizer {
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 10px;
+  height: 100%;
+  cursor: col-resize;
+  user-select: none;
+  touch-action: none;
+  background: transparent;
+  z-index: 20;
+}
+.left .resizer:hover { background: rgba(0,0,0,0.06); }
+
+/* While dragging, show a global resize cursor */
+body.resizing { cursor: col-resize !important; }
+
+.left::-webkit-scrollbar {
+  width: 8px;
+}
+
+.left::-webkit-scrollbar-track {
+  background: var(--surface-2);
+}
+
+.left::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+.left::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+}
+.right{ 
+  background:var(--surface-1); 
+  flex:1; /* Take remaining space */
+  height:100%; /* Fill container height */
+  display:flex;
+}
+#map{ 
+  filter:saturate(1.05); 
+  width:100%;
+  height:100%; /* Fill right panel completely */
+}
+
+/* App header */
+.appbar{
+  display:flex; align-items:center; justify-content:space-between;
+  padding:16px 20px;
+  background:var(--surface-2);
+  border-bottom:1px solid var(--border);
+  box-shadow:var(--shadow);
+}
+.appbrand{ 
+  text-align:left;
+}
+.brand-title{ 
+  font-weight:900; 
+  font-size:24px; 
+  letter-spacing:1px; 
+  color:var(--brand-600);
+  margin-bottom:2px;
+}
+.brand-subtitle{ 
+  font-size:12px; 
+  font-weight:400; 
+  color:var(--muted); 
+  letter-spacing:0.3px;
+  margin-top:2px;
+}
+.brand-subtitle em {
+  font-style:italic;
+  font-weight:500;
+}
+
+/* User auth section */
+.user-auth {
+  display:flex;
+  align-items:center;
+  gap:12px;
+}
+
+.login-form {
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+.login-form input {
+  padding:6px 10px;
+  border:1px solid var(--border);
+  border-radius:6px;
+  font-size:14px;
+  min-width:120px;
+}
+
+.user-profile {
+  display:flex;
+  align-items:center;
+  gap:12px;
+}
+
+.profile-button {
+  display:flex;
+  align-items:center;
+  gap:6px;
+  padding:6px 12px;
+  background:var(--surface-1);
+  border:1px solid var(--border);
+  border-radius:6px;
+  cursor:pointer;
+  font-size:14px;
+  transition:all 0.2s ease;
+}
+
+.profile-button:hover {
+  background:var(--brand-500);
+  color:white;
+  border-color:var(--brand-500);
+}
+
+
+.close-button {
+  background:none;
+  border:none;
+  font-size:20px;
+  cursor:pointer;
+  color:var(--muted);
+  padding:8px;
+  border-radius:4px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  min-width:32px;
+  min-height:32px;
+}
+
+.close-button:hover {
+  background:var(--border);
+  color:var(--text);
+}
+
+.close-button:active {
+  background:var(--brand-100);
+}
+
+/* Profile Right Panel */
+.profile-right-panel {
+  width: 100%;
+  height: 100%;
+  background: var(--bg);
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.profile-header-right {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.profile-content-right {
+  height: calc(100% - 60px);
+  overflow-y: auto;
+}
+
+/* Profile sections styled like left panel */
+.profile-section {
+  margin:12px;
+}
+
+.profile-panel {
+  background:var(--surface-1);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  overflow:hidden;
+  box-shadow:var(--shadow);
+  margin-bottom:12px;
+}
+
+.profile-panel-header {
+  background:var(--surface-2);
+  padding:12px 16px;
+  border-bottom:1px solid var(--border);
+  font-weight:700;
+  font-size:14px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+}
+
+.profile-panel-body {
+  padding:12px 16px;
+}
+
+.profile-item {
+  display:flex;
+  align-items:center;
+  gap:10px;
+  border:1px solid var(--border);
+  background:var(--surface-1);
+  border-radius:8px;
+  padding:8px;
+  margin-bottom:6px;
+  font-size:13px;
+}
+
+.profile-item:last-child {
+  margin-bottom:0;
+}
+
+.profile-item-content {
+  flex:1;
+  min-width:0;
+}
+
+.profile-item-title {
+  font-weight:600;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.profile-item-subtitle {
+  color:var(--muted);
+  font-size:12px;
+  margin-top:2px;
+}
+
+.profile-item-actions {
+  display:flex;
+  gap:6px;
+}
+
+.profile-empty {
+  text-align:center;
+  padding:20px;
+  color:var(--muted);
+  font-size:13px;
+}
+
+.profile-empty svg {
+  width:32px;
+  height:32px;
+  margin:0 auto 8px;
+  display:block;
+}
+
+/* Status indicator */
+.status-indicator {
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  font-size:12px;
+  color:var(--success);
+  font-weight:500;
+  vertical-align:middle;
+}
+
+.status-dot {
+  width:6px;
+  height:6px;
+  background:var(--success);
+  border-radius:50%;
+}
+
+/* Buttons */
+button, .btn{
+  display:inline-flex; align-items:center; gap:8px;
+  border:0; border-radius:10px;
+  padding:8px 12px;
+  background:var(--brand-600); color:#fff; font-weight:600;
+  transition:transform .04s ease, box-shadow .2s ease, background .2s ease;
+  box-shadow: 0 2px 8px rgba(0,0,0,.18);
+  cursor:pointer;
+}
+button:hover, .btn:hover{ 
+  transform:translateY(-1px); 
+  background:var(--brand-700); 
+}
+button:disabled, .btn:disabled{ opacity:.6; cursor:not-allowed; }
+
+.btn-ghost{ 
+  background:transparent; 
+  color:var(--text); 
+  border:1px solid var(--border); 
+}
+.btn-ghost:hover{ 
+  background:var(--surface-2); 
+  border-color:var(--muted);
+  color:var(--text);
+}
+
+.btn-warn{ 
+  background:var(--warn); 
+  color:#111; 
+}
+.btn-warn:hover{ 
+  background:var(--warn-600); 
+  color:#111;
+}
+
+.btn-danger{ 
+  background:var(--danger); 
+}
+.btn-danger:hover{
+  background:var(--danger-600); 
+}
+
+/* Hide any controls that require auth unless .is-authed is present */
+body:not(.is-authed) .authed-only { display:none !important; }
+
+.profile-button {
+  background:var(--surface-1);
+  color:var(--text);
+  border:1px solid var(--border);
+  padding:6px 10px;
+  font-size:12px;
+  border-radius:6px;
+  cursor:pointer;
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+}
+
+.profile-button:hover {
+  background:var(--surface-2);
+  border-color:var(--muted);
+  transform:translateY(-1px);
+}
+
+/* Cards/sections */
+.section{
+  background:var(--surface-1);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  padding:14px;
+  margin-top:12px;
+  box-shadow:var(--shadow);
+}
+h1, h2, h3{ margin:0 0 8px; }
+.muted{ color:var(--muted); }
+
+/* Collapsible panels */
+.panel{
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  background:var(--surface-1);
+  overflow:hidden;
+  box-shadow:var(--shadow);
+  margin-top:12px;
+}
+.panel > summary{
+  list-style:none; cursor:pointer; user-select:none;
+  padding:12px 14px; font-weight:700; display:flex; align-items:center; justify-content:space-between; gap:12px;
+  background:var(--surface-2);
+  border-bottom:1px solid transparent;
+}
+.panel > summary::-webkit-details-marker{ display:none; }
+.panel[open] > summary{ border-bottom:1px solid var(--border); }
+.panel .panel-body{ padding:12px 14px; }
+
+
+/* Form controls */
+input, select, textarea{
+  background:var(--surface-1); color:var(--text);
+  border:1px solid var(--border); border-radius:10px; padding:8px 10px;
+}
+input:focus, select:focus, textarea:focus, button:focus{ outline:2px solid var(--brand-600); outline-offset:1px; }
+
+/* Utility chips/pills (optional) */
+.badge{ border-radius:999px; font-size:11px; font-weight:700; padding:2px 8px; display:inline-block; }
+.badge.success{ background:rgba(34,197,94,.18); color:var(--success); }
+.badge.warn{ background:rgba(245,158,11,.18); color:var(--warn); }
+.badge.neutral{ background:rgba(15,23,42,.08); color:var(--text); }
+
+/* Modern SVG Icons */
+.icon{
+  width:20px; height:20px;
+  stroke:currentColor;
+  fill:none;
+  stroke-width:2;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+.icon-sm{ width:16px; height:16px; }
+.icon-lg{ width:24px; height:24px; }
+
+/* Upload area with icon - smaller for combined layout */
+.upload-icon{
+  width:32px; height:32px;
+  color:var(--muted);
+  margin:0 auto 8px;
+  stroke-width:1.5;
+}
+
+/* Combined upload container */
+.upload-container{
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap:16px;
+  margin-bottom:12px;
+}
+
+@media (max-width: 768px) {
+  .upload-container {
+    grid-template-columns: 1fr;
+  }
+}
   </style>
 </head>
 <body>
 <div id="app">
-    <div class="container">
+  <header class="appbar">
+    <div class="appbrand">
+      <div class="brand-title">EVERMORE</div>
+      <div class="brand-subtitle"><em>EV's Enduro Racing + MORE</em></div>
+    </div>
+    
+    <div class="user-auth">
+      <!-- OAuth Login/Profile Area -->
+      <div id="auth-bar" style="display:flex;align-items:center;gap:12px;">
+        <img id="auth-avatar" src="" alt="" style="width:28px;height:28px;border-radius:50%;display:none;">
+        <span id="auth-name" style="font-weight:600;"></span>
+        <button id="btn-login" class="btn" style="font-size:12px; padding:6px 10px;">Sign in with Google</button>
+        <button id="btn-logout" class="btn" style="display:none;font-size:12px; padding:6px 10px;">Log out</button>
+      </div>
+      
+      <!-- Profile Area (when logged in) -->
+      <div v-if="user.loggedIn" class="user-profile">
+        <button @click="user.showProfile = true" class="profile-button">
+          <svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+            <circle cx="12" cy="7" r="4"/>
+          </svg>
+          Profile
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <div class="container">
     <!-- LEFT PANEL -->
     <div class="left">
-        <h1>GPX Map Viewer</h1>
-        <div class="muted">Lil build of segment gate tool</div>
-
-        <!-- Upload -->
-        <div class="section">
-        <h3 style="margin:0 0 8px 0;">Upload GPX</h3>
-        <div class="upload" :class="{dragover:isDragOver}"
-                @dragover.prevent="isDragOver = true"
-                @dragleave.prevent="isDragOver = false"
-                @drop.prevent="handleDrop">
-            <div>Drag & drop .gpx here</div>
-            <div class="muted" style="margin:6px 0 8px">or</div>
-            <input ref="fileInput" type="file" accept=".gpx" multiple style="display:none" @change="handleFileSelect">
-            <button @click="$refs.fileInput.click()">Choose Files</button>
-        </div>
-        <div class="muted" v-if="loading" style="margin-top:8px;">Processing…</div>
-        <div style="margin-top:8px; color:#b91c1c" v-if="error">{{ error }}</div>
-        </div>
-        
-        <!-- Strava (integrated: connect + list + preview + paging + collapse) -->
-        <div class="section">
-            <div class="row" style="justify-content:space-between; align-items:center;">
-            <h3 style="margin:0; cursor:pointer;" @click="strava.open = !strava.open">
-                Strava
-                <span class="muted" style="font-weight:400; margin-left:6px;">
-                (click to {{ strava.open ? 'collapse' : 'expand' }})
-                </span>
-            </h3>
-        
-            <div class="row">
-                <button v-if="!strava.connected" @click="stravaLogin" style="background:#ef4444">Connect</button>
-                <div v-else class="muted">Connected as {{ strava.athlete?.username || strava.athlete?.firstname || 'athlete' }}</div>
-            </div>
-            </div>
-        
-            <div v-show="strava.open" style="margin-top:8px;">
-            <div class="row" v-if="strava.connected" style="align-items:center;">
-                <button @click="refreshStrava" style="background:#374151">Refresh</button>
-                <div class="muted">Most recent {{ strava.perPage }} activities</div>
-            </div>
-        
-            <div v-if="strava.error" style="color:#b91c1c; margin-top:8px;">{{ strava.error }}</div>
-            <div v-if="strava.loading" class="muted" style="margin-top:8px;">Loading…</div>
-        
-            <div v-if="strava.connected && !strava.loading" style="margin-top:8px;">
-                <div v-if="!strava.activities.length" class="muted">No activities on this page.</div>
-        
-                <div class="tracks" v-else>
-                <div v-for="a in strava.activities" :key="a.id"
-                    class="track-item"
-                    style="display:flex; align-items:center; gap:10px; border:1px solid #e5e7eb; background:#fff; border-radius:10px; padding:8px; margin-bottom:6px;">
-                    <div style="flex:1; min-width:0;">
-                    <div style="font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
-                        {{ a.name }} <span class="muted">({{ a.sport_type || a.type }})</span>
-                    </div>
-                    <div class="muted">
-                        {{ a.start_date_local || a.start_date }}
-                        <span v-if="a.distance"> · {{ (a.distance/1000).toFixed(2) }} km</span>
-                    </div>
-                    </div>
-        
-                    <button
-                    @click="previewStravaActivity(a.id)"
-                    :style="{ background: (strava.preview.activityId === a.id ? '#374151' : '#2563eb') }"
-                    >
-                    {{ strava.preview.activityId === a.id ? 'Hide Preview' : 'Preview' }}
+        <!-- UPLOAD -->
+        <section id="upload" class="section">
+          <details class="panel" open>
+            <summary>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <!-- Upload Icon -->
+                <img src="assets/icons/upload.svg" alt="Upload" class="icon" style="filter: brightness(0) saturate(100%) invert(27%) sepia(51%) saturate(2878%) hue-rotate(346deg) brightness(104%) contrast(97%);">
+                Upload
+              </div>
+              <span class="badge neutral">files & activities</span>
+            </summary>
+            <div class="panel-body">
+              <div class="upload-container">
+                <!-- GPX Upload -->
+                <div class="upload" :class="{dragover:isDragOver}"
+                        @dragover.prevent="isDragOver = true"
+                        @dragleave.prevent="isDragOver = false"
+                        @drop.prevent="handleDrop">
+                    <!-- Modern Upload Icon -->
+                    <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                      <polyline points="7,10 12,5 17,10"/>
+                      <line x1="12" y1="5" x2="12" y2="15"/>
+                    </svg>
+                    <div style="font-weight:600; margin-bottom:4px; font-size:14px;">GPX Files</div>
+                    <div class="muted" style="margin:4px 0 8px; font-size:12px;">Drag & drop or click</div>
+                    <input ref="fileInput" type="file" accept=".gpx" multiple style="display:none" @change="handleFileSelect">
+                    <button @click="$refs.fileInput.click()" class="btn" style="font-size:12px; padding:6px 10px;">
+                      Choose Files
                     </button>
+                </div>
+
+                <!-- Strava Connect -->
+                <div class="upload" style="background:var(--surface-1); border:1px solid var(--border);">
+                    <!-- Strava Icon -->
+                    <img src="assets/icons/strava.svg" alt="Strava" class="upload-icon" style="width:32px; height:32px;">
+                    <div style="font-weight:600; margin-bottom:4px; font-size:14px;">Strava</div>
+                    <div class="muted" style="margin:4px 0 8px; font-size:12px;" v-if="!strava.connected">Connect account</div>
+                    <div class="muted" style="margin:4px 0 8px; font-size:12px;" v-else>{{ strava.athlete?.firstname || 'Connected' }}</div>
+                    
+                    <button v-if="!strava.connected" @click="stravaLogin" class="btn" style="font-size:12px; padding:6px 10px; background:#FC4C02;">
+                      Connect
+                    </button>
+                    <button v-else @click="strava.open = !strava.open" class="btn btn-ghost" style="font-size:12px; padding:6px 10px;">
+                      {{ strava.open ? 'Hide' : 'Show' }} Activities
+                    </button>
+                </div>
+              </div>
+
+              <!-- Status Messages -->
+              <div class="muted" v-if="loading" style="margin-top:8px;">Processing…</div>
+              <div style="margin-top:8px; color:var(--danger)" v-if="error">{{ error }}</div>
+
+              <!-- Strava Activities (when expanded) -->
+              <div v-if="strava.connected && strava.open" style="margin-top:12px; padding-top:12px; border-top:1px solid var(--border);">
+                <h4 style="margin:0 0 8px; font-size:14px; color:var(--muted);">Strava Activities</h4>
+                
+                <div class="row" style="align-items:center; margin-bottom:8px;">
+                    <button @click="refreshStrava" class="btn btn-ghost" style="font-size:12px; padding:4px 8px;">
+                      <svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <polyline points="23 4 23 10 17 10"/>
+                        <polyline points="1 20 1 14 7 14"/>
+                        <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/>
+                      </svg>
+                      Refresh
+                    </button>
+                    <div class="muted" style="font-size:12px;">{{ strava.perPage }} most recent</div>
+                </div>
+
+                <div v-if="strava.error" style="color:var(--danger); margin-bottom:8px; font-size:12px;">{{ strava.error }}</div>
+                <div v-if="strava.loading" class="muted" style="margin-bottom:8px; font-size:12px;">Loading…</div>
+
+                <div v-if="!strava.loading">
+                    <div v-if="!strava.activities.length" class="muted" style="font-size:12px;">No activities found.</div>
+                    
+                    <div v-else>
+                    <div v-for="a in strava.activities" :key="a.id"
+                        style="display:flex; align-items:center; gap:8px; border:1px solid var(--border); background:var(--surface-1); border-radius:8px; padding:6px; margin-bottom:4px; font-size:12px;">
+                        <div style="flex:1; min-width:0;">
+                        <div style="font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                            {{ a.name }} <span class="muted">({{ a.sport_type || a.type }})</span>
+                        </div>
+                        <div class="muted" style="font-size:11px;">
+                            {{ a.start_date_local || a.start_date }}
+                            <span v-if="a.distance"> · {{ (a.distance/1000).toFixed(2) }} km</span>
+                        </div>
+                        </div>
+
+                        <button @click="previewStravaActivity(a.id)" 
+                                :class="strava.preview.activityId === a.id ? 'btn btn-ghost' : 'btn'"
+                                style="font-size:11px; padding:4px 6px;">
+                        {{ strava.preview.activityId === a.id ? 'Hide' : 'Preview' }}
+                        </button>
+
+                        <button @click="importStravaActivity(a.id)" class="btn" style="font-size:11px; padding:4px 6px;">Import</button>
+                    </div>
+                    </div>
+
+                    <!-- Pagination -->
+                    <div class="row" style="justify-content:space-between; margin-top:8px; font-size:12px;">
+                    <button @click="prevStravaPage" :disabled="strava.page <= 1" class="btn btn-ghost" style="font-size:11px; padding:4px 8px;">Prev</button>
+                    <div class="muted">Page {{ strava.page }}</div>
+                    <button @click="nextStravaPage" :disabled="!strava.hasMore" class="btn btn-ghost" style="font-size:11px; padding:4px 8px;">Next</button>
+                    </div>
+                </div>
+
+                <div v-if="!strava.connected && !strava.loading" class="muted" style="margin-top:8px; font-size:12px;">
+                    Connect your Strava account to import activities.
+                </div>
+              </div>
+            </div>
+          </details>
+        </section>
+
+        <!-- ROUTES -->
+        <section id="routes" class="section">
+          <details class="panel" open>
+            <summary>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <!-- Map/Route Icon -->
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                  <circle cx="12" cy="10" r="3"/>
+                </svg>
+                Routes
+              </div>
+              <span v-if="tracks.length" class="badge success">{{ tracks.length }} loaded</span>
+              <span v-else class="badge neutral">empty</span>
+            </summary>
+            <div class="panel-body">
+              <div v-if="tracks.length > 0">
+
+                <div class="tracks">
+                    <div v-for="t in tracks" :key="t.id"
+                        class="track-item"
+                        style="display:flex; align-items:flex-start; gap:10px; border:1px solid var(--border); background:var(--surface-1); border-radius:10px; padding:8px;">
+                    <!-- Per-track selection -->
+                    <input type="checkbox" :checked="isSelected(t.id)" @change="toggleTrack(t.id)" style="margin-top:4px;" />
+                    <span class="dot" :style="{color:t.color}">●</span>
+                    <div style="flex:1; min-width:0;">
+                        <div style="font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ t.name }}</div>
+                        <div class="muted">{{ t.points.length }} pts</div>
+
+                        <!-- Segment times (per confirmed gate pair) -->
+                        <div v-if="t.segmentTimes && t.segmentTimes.length" style="margin-top:6px; font-size:12px;">
+                        <div v-for="seg in t.segmentTimes" :key="seg.segment" class="muted">
+                            <strong>{{ seg.segment }}:</strong>
+                            <span v-if="seg.timeSec !== 'N/A'">{{ seg.timeSec }}s</span>
+                            <span v-else>N/A</span>
+                            <span v-if="seg.valid === true" style="color:var(--success); font-weight:700; margin-left:6px;">✓</span>
+                            <span v-else-if="seg.valid === false" style="color:var(--danger); font-weight:700; margin-left:6px;">✗</span>
+                        </div>
+                        </div>
+                    </div>
+
+                    <!-- Per-track remove -->
+                    <button @click="removeTrack(t.id)" class="btn btn-danger">Remove</button>
+                    </div>
+                </div>
+              </div>
+
+              <!-- Empty state -->
+              <div v-else style="text-align:center; padding:20px;">
+                <svg style="width:48px; height:48px; color:var(--muted); margin:0 auto 12px;" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                  <circle cx="12" cy="10" r="3"/>
+                </svg>
+                <div class="muted">No routes loaded</div>
+                <div class="muted" style="font-size:12px; margin-top:4px;">Upload GPX files or connect Strava to get started</div>
+              </div>
+            </div>
+          </details>
+        </section>
+
+        <!-- COURSES -->
+        <section id="courses" class="section">
+          <details class="panel">
+            <summary>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <!-- Course/Target Icon -->
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <circle cx="12" cy="12" r="10"/>
+                  <circle cx="12" cy="12" r="6"/>
+                  <circle cx="12" cy="12" r="2"/>
+                </svg>
+                Courses
+              </div>
+              <span class="muted">load, create & save</span>
+            </summary>
+            <div class="panel-body">
+              <!-- Load Course Section (Top) -->
+              <div style="margin-bottom:20px;">
+                <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:8px;">
+                    <h4 style="margin:0; display:flex; align-items:center; gap:6px;">
+                      <svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <polyline points="14,2 14,8 20,8"/>
+                      </svg>
+                      Load Course
+                    </h4>
+                    <button @click="loadCourses" class="btn btn-ghost" style="font-size:11px; padding:4px 8px;">
+                      <svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <polyline points="23 4 23 10 17 10"/>
+                        <polyline points="1 20 1 14 7 14"/>
+                        <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/>
+                      </svg>
+                      Refresh
+                    </button>
+                </div>
+
+                <div class="muted" style="margin-bottom:4px; font-size:12px;">Load an existing course</div>
+                <div class="row">
+                <select v-model.number="selectedCourseId"
+                        style="flex:1; padding:6px 8px; border:1px solid var(--border); border-radius:6px; font-size:12px;">
+                    <option :value="null">— Select Course —</option>
+                    <option v-for="c in courses" :key="c.id" :value="c.id">
+                    {{ c.name }} ({{ c.gates.length }} gates, {{ c.buffer_m }}m)
+                    </option>
+                </select>
+                <button @click="loadSelectedCourse" class="btn" style="font-size:12px; padding:6px 10px;">Load</button>
+                </div>
+              </div>
+
+              <!-- Gates Section (Middle) -->
+              <div style="margin-bottom:20px; border-top:1px solid var(--border); padding-top:16px;">
+                <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:8px;">
+                    <h4 style="margin:0; display:flex; align-items:center; gap:6px;">
+                      <svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/>
+                        <line x1="4" y1="22" x2="4" y2="15"/>
+                      </svg>
+                      Create Gates
+                    </h4>
+                    <div class="row">
+                    <button @click="addGatePair" class="btn">Add Gate</button>
+                    </div>
+                </div>
+
+                <div v-if="gatePairs.length === 0" class="muted" style="margin-bottom:8px; font-size:12px;">No gates yet. Click "Add Gate" to create timing points.</div>
+
+                <div v-for="pair in gatePairs" :key="pair.pairId" class="gate-item" style="margin-bottom:8px;">
+                    <div class="gate-title">
+                    <input v-if="pair.editing" class="gate-name" :value="pair.name" @input="updatePairName(pair.pairId, $event.target.value)" placeholder="Gate pair name">
+                    <div v-else style="font-weight:600;">{{ pair.name }}</div>
+                    <div class="status" :class="{ok: pair.confirmed}">{{ pair.confirmed ? 'CONFIRMED' : 'EDITING' }}</div>
+                    </div>
+
+                    <div style="margin-top:6px; font-size:11px;">
+                    <span class="badge start">START</span>
+                    <span class="coords">{{ pair.start.lat.toFixed(6) }}, {{ pair.start.lon.toFixed(6) }}</span>
+                    </div>
+                    <div style="margin-top:4px; font-size:11px;">
+                    <span class="badge end">END</span>
+                    <span class="coords">{{ pair.end.lat.toFixed(6) }}, {{ pair.end.lon.toFixed(6) }}</span>
+                    </div>
+
+                    <div class="row" style="margin-top:8px;">
+                    <button v-if="!pair.editing" @click="startEditing(pair.pairId)" class="btn btn-warn" style="font-size:11px; padding:4px 8px;">Edit</button>
+                    <button v-if="pair.editing" @click="saveAndConfirmGate(pair.pairId)" class="btn" style="font-size:11px; padding:4px 8px;">Save</button>
+                    <button @click="removeGatePair(pair.pairId)" class="btn btn-danger" style="font-size:11px; padding:4px 8px;">Remove</button>
+                    <button v-if="pair.editing" @click="addCheckpoint(pair.pairId)" class="btn" style="font-size:11px; padding:4px 8px;">+ Point</button>
+                    <button v-if="pair.editing && (pair.checkpoints?.length)" @click="removeLastCheckpoint(pair.pairId)" class="btn btn-ghost" style="font-size:11px; padding:4px 8px;">- Point</button>
+                    </div>
+                    <div class="muted" style="margin-top:4px; font-size:10px;">Tip: drag markers on map when editing.</div>
+                </div>
+              </div>
+
+              <!-- Save Course Section (Bottom) -->
+              <div style="border-top:1px solid var(--border); padding-top:16px;">
+                <h4 style="margin:0 0 8px; display:flex; align-items:center; gap:6px;">
+                  <svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                    <polyline points="17,21 17,13 7,13 7,21"/>
+                    <polyline points="7,3 7,8 15,8"/>
+                  </svg>
+                  Save Course
+                </h4>
+                <div class="muted" style="margin-bottom:4px; font-size:12px;">Save current confirmed gates as a reusable course</div>
+                <div class="row">
+                <input v-model="newCourseName" placeholder="Course name"
+                        style="flex:1; padding:6px 8px; border:1px solid var(--border); border-radius:6px; font-size:12px;">
+                <button @click="saveCurrentGatesAsCourse" class="btn" style="font-size:12px; padding:6px 10px;">Save Course</button>
+                </div>
+                <div class="row" style="margin-top:8px; justify-content:flex-end;">
+                  <button @click="clearAllGates" class="btn btn-danger" style="font-size:11px; padding:4px 8px;">Clear All Gates</button>
+                </div>
+              </div>
+            </div>
+          </details>
+        </section>
+
+        <!-- LEADERBOARD -->
+        <section id="leader" class="section" v-if="selectedCourseId">
+          <details class="panel">
+            <summary>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <!-- Trophy/Leaderboard Icon -->
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/>
+                  <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/>
+                  <path d="M4 22h16"/>
+                  <path d="M10 14.66V17c0 .55.47.98.97 1.21C11.56 18.75 12 19.38 12 20s-.44 1.25-1.03 1.79C10.47 21.02 10 20.45 10 20v-5.34"/>
+                  <path d="M14 14.66V17c0 .55-.47.98-.97 1.21C12.44 18.75 12 19.38 12 20s.44 1.25 1.03 1.79C13.53 21.02 14 20.45 14 20v-5.34"/>
+                  <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>
+                </svg>
+                Leaderboard
+              </div>
+              <span class="muted">times & ranks</span>
+            </summary>
+            <div class="panel-body">
+              <div class="row" style="justify-content:space-between; align-items:center;">
+                  <h3 style="margin:0">Leaderboard</h3>
+                  <button @click="fetchLeaderboard" class="btn btn-ghost">
+                    <svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                      <polyline points="23 4 23 10 17 10"/>
+                      <polyline points="1 20 1 14 7 14"/>
+                      <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/>
+                    </svg>
+                    Refresh
+                  </button>
+              </div>
+
+              <div class="muted" style="margin-top:6px;">Login and submit any loaded track to the current course.</div>
+
+              <!-- Submit any of your uploaded tracks -->
+              <div style="margin-top:8px;">
+                  <div v-for="t in tracks" :key="t.id"
+                      style="display:flex; align-items:center; gap:10px; border:1px solid #e5e7eb; background:#fff; border-radius:10px; padding:8px; margin-bottom:6px;">
+                  <span class="dot" :style="{color:t.color}">●</span>
+                  <div style="flex:1; min-width:0;">
+                      <div style="font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ t.name }}</div>
+                      <div class="muted">{{ t.points.length }} pts</div>
+                  </div>
+                  <button @click="submitTrackToLeaderboard(t.id)" :disabled="!user.loggedIn" class="btn">Submit</button>
+                  </div>
+              </div>
+
+              <!-- Top times -->
+              <div v-if="leaderboard.length" style="margin-top:12px;">
+                  <div class="muted" style="margin-bottom:6px;">Top times</div>
+                  <div v-for="(e,i) in leaderboard" :key="e.id"
+                      style="display:flex; align-items:center; justify-content:space-between; gap:8px; border:1px solid #e5e7eb; background:#fff; border-radius:10px; padding:8px; margin-bottom:6px;">
+                  <div style="display:flex; gap:8px; align-items:center;">
+                      <div style="width:22px; text-align:center; font-weight:700;">#{{ i+1 }}</div>
+                      <div style="font-weight:600">{{ e.username }}</div>
+                  </div>
+                  <div style="font-weight:700">{{ e.total_time_sec }}s</div>
+                  </div>
+              </div>
+              <div class="muted" v-else style="margin-top:8px;">No entries yet.</div>
+            </div>
+          </details>
+        </section>
         
-                    <button @click="importStravaActivity(a.id)">Import</button>
-                </div>
-                </div>
-        
-                <!-- Pagination -->
-                <div class="row" style="justify-content:space-between; margin-top:8px;">
-                <button @click="prevStravaPage" :disabled="strava.page <= 1">Prev</button>
-                <div class="muted">Page {{ strava.page }}</div>
-                <button @click="nextStravaPage" :disabled="!strava.hasMore">Next</button>
-                </div>
-            </div>
-        
-            <div v-if="!strava.connected && !strava.loading" class="muted" style="margin-top:8px;">
-                Connect your Strava account to import recent activities.
-            </div>
-            </div>
-        </div>
-
-        <!-- Tracks -->
-        <div class="section" v-if="tracks.length">
-        <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:6px;">
-            <h3 style="margin:0">Tracks <span class="muted">({{ tracks.length }})</span></h3>
-            <div class="row">
-            <button @click="clearTracks" style="background:#6b7280">Clear All</button>
-            </div>
-        </div>
-
-        <div class="tracks">
-            <div v-for="t in tracks" :key="t.id"
-                class="track-item"
-                style="display:flex; align-items:flex-start; gap:10px; border:1px solid #e5e7eb; background:#fff; border-radius:10px; padding:8px;">
-            <!-- Per-track selection -->
-            <input type="checkbox" :checked="isSelected(t.id)" @change="toggleTrack(t.id)" style="margin-top:4px;" />
-            <span class="dot" :style="{color:t.color}">●</span>
-            <div style="flex:1; min-width:0;">
-                <div style="font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ t.name }}</div>
-                <div class="muted">{{ t.points.length }} pts</div>
-
-                <!-- Segment times (per confirmed gate pair) -->
-                <div v-if="t.segmentTimes && t.segmentTimes.length" style="margin-top:6px; font-size:12px;">
-                <div v-for="seg in t.segmentTimes" :key="seg.segment" class="muted">
-                    <strong>{{ seg.segment }}:</strong>
-                    <span v-if="seg.timeSec !== 'N/A'">{{ seg.timeSec }}s</span>
-                    <span v-else>N/A</span>
-                </div>
-                </div>
-            </div>
-
-            <!-- Per-track remove -->
-            <button @click="removeTrack(t.id)" style="background:#ef4444">Remove</button>
-            </div>
-        </div>
-        </div>
-
-        <!-- Gate Pairs -->
-        <div class="section">
-        <div class="row" style="justify-content:space-between; align-items:center;">
-            <h3 style="margin:0">Gate Pairs</h3>
-            <div class="row">
-            <button @click="addGatePair">Add Gate Pair</button>
-            <button @click="clearAllGates" style="background:#ef4444">Clear</button>
-            </div>
-        </div>
-
-        <div v-if="gatePairs.length === 0" class="muted" style="margin-top:6px;">No gates yet. Click “Add Gate Pair”.</div>
-
-        <div v-for="pair in gatePairs" :key="pair.pairId" class="gate-item">
-            <div class="gate-title">
-            <input v-if="pair.editing" class="gate-name" v-model="pair.name" placeholder="Gate pair name">
-            <div v-else style="font-weight:600">{{ pair.name }}</div>
-            <div class="status" :class="{ok: pair.confirmed}">{{ pair.confirmed ? 'CONFIRMED' : 'EDITING' }}</div>
-            </div>
-
-            <div style="margin-top:6px;">
-            <span class="badge start">START</span>
-            <span class="coords">{{ pair.start.lat.toFixed(6) }}, {{ pair.start.lon.toFixed(6) }}</span>
-            </div>
-            <div style="margin-top:4px;">
-            <span class="badge end">END</span>
-            <span class="coords">{{ pair.end.lat.toFixed(6) }}, {{ pair.end.lon.toFixed(6) }}</span>
-            </div>
-
-            <div class="row" style="margin-top:8px;">
-            <button v-if="!pair.editing" @click="startEditing(pair.pairId)" style="background:#f59e0b; color:#111827;">Edit</button>
-            <button v-if="pair.editing" @click="saveAndConfirmGate(pair.pairId)" style="background:#10b981;">Save & Confirm</button>
-            <button @click="removeGatePair(pair.pairId)" style="background:#ef4444;">Remove</button>
-            </div>
-            <div class="muted" style="margin-top:6px;">Tip: when editing, drag the markers on the map.</div>
-        </div>
-        </div>
-
-        <!-- Courses (own block, still in left panel) -->
-        <div class="section">
-        <div class="row" style="justify-content:space-between; align-items:center;">
-            <h3 style="margin:0">Courses</h3>
-            <button @click="loadCourses" style="background:#374151">Refresh</button>
-        </div>
-
-        <!-- Save current confirmed gates as a course -->
-        <div style="margin-top:8px;">
-            <div class="muted" style="margin-bottom:4px;">Save current confirmed gate pairs as a reusable course</div>
-            <div class="row">
-            <input v-model="newCourseName" placeholder="Course name"
-                    style="flex:1; padding:6px 8px; border:1px solid #e5e7eb; border-radius:6px;">
-            <button @click="saveCurrentGatesAsCourse">Save</button>
-            </div>
-        </div>
-
-        <!-- Load an existing course -->
-        <div style="margin-top:12px;">
-            <div class="muted" style="margin-bottom:4px;">Load an existing course</div>
-            <div class="row">
-            <select v-model.number="selectedCourseId"
-                    style="flex:1; padding:6px 8px; border:1px solid #e5e7eb; border-radius:6px;">
-                <option :value="null">— Select —</option>
-                <option v-for="c in courses" :key="c.id" :value="c.id">
-                {{ c.name }} ({{ c.gates.length }} gates, {{ c.buffer_m }}m)
-                </option>
-            </select>
-            <button @click="loadSelectedCourse">Load</button>
-            </div>
-        </div>
-        </div>
-
-        <!-- Leaderboard (own block, still in left panel) -->
-        <div class="section" v-if="selectedCourseId">
-        <div class="row" style="justify-content:space-between; align-items:center;">
-            <h3 style="margin:0">Leaderboard</h3>
-            <button @click="fetchLeaderboard" style="background:#374151">Refresh</button>
-        </div>
-
-        <div class="row" style="align-items:center; margin-top:8px;">
-            <input v-model="username" placeholder="Your name (arcade style)"
-                    style="flex:1; padding:6px 8px; border:1px solid #e5e7eb; border-radius:6px;">
-        </div>
-        <div class="muted" style="margin-top:6px;">Submit any track below to the current course.</div>
-
-        <!-- Submit any of your uploaded tracks -->
-        <div style="margin-top:8px;">
-            <div v-for="t in tracks" :key="t.id"
-                style="display:flex; align-items:center; gap:10px; border:1px solid #e5e7eb; background:#fff; border-radius:10px; padding:8px; margin-bottom:6px;">
-            <span class="dot" :style="{color:t.color}">●</span>
-            <div style="flex:1; min-width:0;">
-                <div style="font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ t.name }}</div>
-                <div class="muted">{{ t.points.length }} pts</div>
-            </div>
-            <button @click="submitTrackToLeaderboard(t.id)" :disabled="!username">Submit</button>
-            </div>
-        </div>
-
-        <!-- Top times -->
-        <div v-if="leaderboard.length" style="margin-top:12px;">
-            <div class="muted" style="margin-bottom:6px;">Top times</div>
-            <div v-for="(e,i) in leaderboard" :key="e.id"
-                style="display:flex; align-items:center; justify-content:space-between; gap:8px; border:1px solid #e5e7eb; background:#fff; border-radius:10px; padding:8px; margin-bottom:6px;">
-            <div style="display:flex; gap:8px; align-items:center;">
-                <div style="width:22px; text-align:center; font-weight:700;">#{{ i+1 }}</div>
-                <div style="font-weight:600">{{ e.username }}</div>
-            </div>
-            <div style="font-weight:700">{{ e.total_time_sec }}s</div>
-            </div>
-        </div>
-        <div class="muted" v-else style="margin-top:8px;">No entries yet.</div>
-        </div>
+        <div class="resizer" id="leftResizer" aria-label="Resize sidebar"></div>
     </div>
 
-    <!-- RIGHT PANEL (MAP) -->
+    <!-- RIGHT PANEL (MAP OR PROFILE) -->
     <div class="right">
-        <div id="map" class="map"></div>
+        <div id="map" :style="{display: user.showProfile ? 'none' : 'block'}"></div>
+        
+        <!-- Profile Panel -->
+        <div v-if="user.showProfile" class="profile-right-panel">
+          <div class="profile-header-right">
+            <h3 style="margin:0; font-size:18px;">{{ user.name }}'s Profile</h3>
+            <div style="display:flex; gap:8px;">
+              <button @click="fetchProfile" class="btn" style="font-size:12px; padding:6px 10px;">
+                <svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path d="M23 4v6h-6"/>
+                  <path d="M1 20v-6h6"/>
+                  <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10"/>
+                  <path d="M3.51 15a9 9 0 0 0 14.85 4.36L23 14"/>
+                </svg>
+                Refresh
+              </button>
+              <button @click="closeProfileModal" class="btn btn-ghost" style="font-size:12px; padding:6px 10px;">
+                Back to Map
+              </button>
+            </div>
+          </div>
+          
+          <div class="profile-content-right">
+            <!-- Your Courses -->
+            <div class="profile-section">
+              <div class="profile-panel">
+                <div class="profile-panel-header">
+                  <div style="display:flex; align-items:center; gap:8px;">
+                    <svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                      <circle cx="12" cy="12" r="10"/>
+                      <circle cx="12" cy="12" r="6"/>
+                      <circle cx="12" cy="12" r="2"/>
+                    </svg>
+                    Your Courses
+                  </div>
+                  <span class="badge neutral">{{ user.createdCourses.length }}</span>
+                </div>
+                <div class="profile-panel-body">
+                  <div v-if="user.createdCourses.length === 0" class="profile-empty">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                      <circle cx="12" cy="12" r="10"/>
+                      <circle cx="12" cy="12" r="6"/>
+                      <circle cx="12" cy="12" r="2"/>
+                    </svg>
+                    <div>No courses created yet</div>
+                    <div style="margin-top:4px; font-size:11px;">Create gates and save them as a course</div>
+                  </div>
+                  <div v-for="course in user.createdCourses" :key="course.id" class="profile-item">
+                    <div class="profile-item-content">
+                      <div class="profile-item-title">{{ course.name }}</div>
+                      <div class="profile-item-subtitle">{{ course.gates.length }} gates • {{ course.buffer_m }}m buffer</div>
+                    </div>
+                    <div class="profile-item-actions">
+                      <button @click="loadCourseFromProfile(course.id)" class="btn" style="font-size:11px; padding:4px 8px;">Load</button>
+                      <button @click="deleteCourse(course.id)" class="btn btn-danger" style="font-size:11px; padding:4px 8px;">Delete</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Leaderboard Positions -->
+            <div class="profile-section">
+              <div class="profile-panel">
+                <div class="profile-panel-header">
+                  <div style="display:flex; align-items:center; gap:8px;">
+                    <svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                      <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/>
+                      <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/>
+                      <path d="M4 22h16"/>
+                      <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>
+                    </svg>
+                    Leaderboard Positions
+                  </div>
+                  <span class="badge neutral">{{ user.leaderboardPositions.length }}</span>
+                </div>
+                <div class="profile-panel-body">
+                  <div v-if="user.leaderboardPositions.length === 0" class="profile-empty">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                      <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/>
+                      <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/>
+                      <path d="M4 22h16"/>
+                      <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>
+                    </svg>
+                    <div>No leaderboard entries yet</div>
+                    <div style="margin-top:4px; font-size:11px;">Submit a route to a course to appear on leaderboards</div>
+                  </div>
+                  <div v-for="pos in user.leaderboardPositions" :key="pos.id" class="profile-item">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                      <div style="background:var(--brand-500); color:white; border-radius:50%; width:24px; height:24px; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:11px;">
+                        #{{ pos.rank }}
+                      </div>
+                      <div class="profile-item-content">
+                        <div class="profile-item-title">{{ pos.courseName }}</div>
+                        <div class="profile-item-subtitle">{{ pos.time }}s</div>
+                      </div>
+                    </div>
+                    <div class="profile-item-actions">
+                      <button @click="loadCourseFromProfile(pos.courseId)" class="btn" style="font-size:11px; padding:4px 8px;">Load</button>
+                      <button @click="deleteLeaderboardEntry(pos.id)" class="btn btn-danger" style="font-size:11px; padding:4px 8px;">Delete</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
     </div>
     </div>
 </div>
 
+
 <script>
     // Backend API configuration
-    window.API_BASE = "https://trees-race-app-aqd6bva2etcfaaeb.canadacentral-01.azurewebsites.net";
+    // Auto-detect local vs production
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      window.API_BASE = "http://127.0.0.1:3000";  // Local development
+      window.STRAVA_BASE = "https://trees-race-app-aqd6bva2etcfaaeb.canadacentral-01.azurewebsites.net";  // Strava auth stays on hosted
+    } else {
+      window.API_BASE = "https://trees-race-app-aqd6bva2etcfaaeb.canadacentral-01.azurewebsites.net";  // Production
+      window.STRAVA_BASE = window.API_BASE;  // Same as API in production
+    }
   
     function API(path) {
+      // Route Strava endpoints to hosted server even in local dev
+      if (path.startsWith('/api/strava/')) {
+        return (window.STRAVA_BASE || window.API_BASE) + path;
+      }
       return (window.API_BASE || "") + path;
+    }
+
+    // OAuth functionality
+    async function fetchMe() {
+      try {
+        const r = await fetch(`${window.API_BASE}/me`, { credentials: 'include' });
+        if (!r.ok) return { user: null };
+        return await r.json();
+      } catch { return { user: null }; }
+    }
+
+    function loginGoogle() {
+      const next = encodeURIComponent(location.href);
+      location.href = `${window.API_BASE}/auth/google/start?next=${next}`;
+    }
+
+    async function logout() {
+      await fetch(`${window.API_BASE}/auth/logout`, { method: 'POST', credentials: 'include' });
+      // Clear localStorage for legacy system compatibility
+      localStorage.removeItem("ever_user");
+      await hydrateAuth();
+    }
+
+    async function hydrateAuth() {
+      const { user } = await fetchMe();
+      const $avatar = document.getElementById('auth-avatar');
+      const $name = document.getElementById('auth-name');
+      const $login = document.getElementById('btn-login');
+      const $logout = document.getElementById('btn-logout');
+
+      if (user) {
+        $name.textContent = user.name || user.email;
+        if (user.avatar_url) { $avatar.src = user.avatar_url; $avatar.style.display = 'block'; }
+        else { $avatar.style.display = 'none'; }
+        $login.style.display = 'none';
+        $logout.style.display = 'inline-flex';
+        document.body.classList.add('is-authed');
+        // Store minimal display info in memory for other components
+        window.__AUTH_USER__ = user;
+        
+        // Also update Vue user state for compatibility with existing profile system
+        if (window.app && window.app.user) {
+          window.app.user.loggedIn = true;
+          window.app.user.name = user.name || user.email;
+          // Fetch the profile data for the Vue system
+          await window.app.fetchProfile?.();
+        }
+      } else {
+        $name.textContent = '';
+        $avatar.style.display = 'none';
+        $login.style.display = 'inline-flex';
+        $logout.style.display = 'none';
+        document.body.classList.remove('is-authed');
+        window.__AUTH_USER__ = null;
+        
+        // Also clear Vue user state
+        if (window.app && window.app.user) {
+          window.app.user.loggedIn = false;
+          window.app.user.name = '';
+          window.app.user.showProfile = false;
+          window.app.user.createdCourses = [];
+          window.app.user.leaderboardPositions = [];
+        }
+      }
     }
 </script>
 
@@ -300,6 +1141,7 @@ const app = createApp({
         trackLayers: [],   // holds polylines + start/end markers for tracks
         selectedTrackIds: [], // holds ids of selected tracks
         gateMarkers: [],   // holds gate markers (for all pairs)
+        checkpointMarkers: [], // holds checkpoint markers (for all pairs)
 
         // UI state
         isDragOver: false,
@@ -310,16 +1152,28 @@ const app = createApp({
         tracks: [],        // [{id, name, points:[{lat, lon, ele?, time?}], color}]
         trackColors: ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#14b8a6', '#111827'],
         timeGates: [],      // flat list of gates: {id, pairId, name, type:'start'|'end', lat, lon, confirmed, editing}
+        pairCheckpoints: new Map(), // Map of pairId -> array of checkpoints [{lat, lon}]
+        pairNames: new Map(), // Map of pairId -> custom name string
 
         // Constants
         bufferMeters: 10,
 
         // Leaderboard
-        username: "",
         newCourseName: "",
         courses: [],
         selectedCourseId: null,
         leaderboard: [],
+
+        // User system
+        user: {
+            loggedIn: false,
+            name: "",
+            loginName: "",
+            showProfile: false,
+            leaderboardPositions: [],
+            createdCourses: []
+        },
+        config: { superUserName: null },
 
         // Strava
         strava: {
@@ -338,37 +1192,263 @@ const app = createApp({
   },
 
   computed: {
+    isSuperUser() {
+      return this.user.loggedIn && this.config.superUserName && this.user.name === this.config.superUserName;
+    },
+    
+    // Get a consistent username for backend operations
+    backendUsername() {
+      if (!this.user.loggedIn) return null;
+      
+      // For OAuth users, use the first name or email prefix
+      if (window.__AUTH_USER__) {
+        const oauthUser = window.__AUTH_USER__;
+        // Use first name if available, otherwise email prefix
+        if (oauthUser.name && oauthUser.name.includes(' ')) {
+          return oauthUser.name.split(' ')[0]; // "Evan Richardson" -> "Evan"
+        }
+        return oauthUser.name || oauthUser.email.split('@')[0];
+      }
+      
+      // For legacy users, use the name as-is
+      return this.user.name;
+    },
     // build pairs from flat gates robustly
     gatePairs() {
       const groups = new Map();
       for (const g of this.timeGates) {
         if (!groups.has(g.pairId)) {
+          const customName = this.pairNames.get(g.pairId);
           groups.set(g.pairId, {
             pairId: g.pairId,
-            name: g.name || `Gate Pair ${g.pairId}`,
+            name: customName || g.name || `Gate Pair ${g.pairId}`,
             start: null,
             end: null,
+            checkpoints: this.pairCheckpoints.get(g.pairId) || [],
             confirmed: false,
             editing: false
           });
         }
         const entry = groups.get(g.pairId);
         entry[g.type] = g;                             // start or end
-        entry.name = g.name || entry.name;
+        // Use custom name if available, otherwise fallback to gate name
+        const customName = this.pairNames.get(g.pairId);
+        entry.name = customName || g.name || entry.name;
         entry.confirmed = !!(entry.start?.confirmed && entry.end?.confirmed);
         entry.editing = !!(entry.start?.editing || entry.end?.editing);
+        // Keep checkpoints in sync
+        entry.checkpoints = this.pairCheckpoints.get(g.pairId) || [];
       }
       return Array.from(groups.values()).filter(p => p.start && p.end);
     }
   },
 
-  mounted() {
+  async mounted() {
     this.initMap();
     this.loadCourses();
     this.checkStravaConnected();
+    this.setupSidebarResizer();
+    
+    // Fetch config and restore saved user
+    try {
+      const cfg = await fetch(API("/config")).then(r => r.json());
+      if (!window.API_BASE && cfg.backend_url) window.API_BASE = cfg.backend_url;
+      this.config.superUserName = cfg.super_user_name || null;
+    } catch(e) {}
+    
+    const saved = localStorage.getItem("ever_user");
+    if (saved) {
+      this.user.name = JSON.parse(saved);
+      this.user.loggedIn = true;
+      await this.fetchProfile();
+    }
   },
 
   methods: {
+    /* -------------------- SIDEBAR RESIZER -------------------- */
+    setupSidebarResizer() {
+      const left = document.querySelector('.left');
+      const resizer = left?.querySelector('.resizer');
+      if (!left || !resizer) return;
+
+      const MIN = 320;                 // matches CSS min-width
+      const MAX = Math.floor(window.innerWidth * 0.75);
+
+      let startX = 0, startW = 0, dragging = false;
+
+      const onMove = (e) => {
+        if (!dragging) return;
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const dx = clientX - startX;
+        const newW = Math.max(MIN, Math.min(MAX, startW + dx));
+        left.style.width = newW + 'px';
+        left.style.flex = '0 0 auto';   // keep fixed width during drag
+        if (this.map) this.map.invalidateSize(); // keep Leaflet happy
+        e.preventDefault?.();
+      };
+
+      const stop = () => {
+        if (!dragging) return;
+        dragging = false;
+        document.body.classList.remove('resizing');
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', stop);
+        window.removeEventListener('touchmove', onMove);
+        window.removeEventListener('touchend', stop);
+      };
+
+      const start = (e) => {
+        dragging = true;
+        startX = e.touches ? e.touches[0].clientX : e.clientX;
+        startW = left.getBoundingClientRect().width;
+        document.body.classList.add('resizing');
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', stop);
+        window.addEventListener('touchmove', onMove, { passive: false });
+        window.addEventListener('touchend', stop);
+        e.preventDefault?.();
+      };
+
+      resizer.addEventListener('mousedown', start);
+      resizer.addEventListener('touchstart', start, { passive: false });
+    },
+
+    /* -------------------- USER SYSTEM -------------------- */
+    async login() {
+      const name = (this.user.loginName || "").trim();
+      if (!name) return;
+      
+      const loginUrl = API("/users/login");
+      console.log("Attempting login to:", loginUrl, "with name:", name);
+      
+      try {
+        const res = await fetch(loginUrl, {
+          method: "POST",
+          headers: {"Content-Type":"application/json"},
+          body: JSON.stringify({ name })
+        });
+        
+        console.log("Login response status:", res.status);
+        
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => ({}));
+          const errorMsg = errorData.detail || `Login failed (${res.status})`;
+          console.error("Login error details:", errorData);
+          alert(`Login failed: ${errorMsg}\n\nTrying to connect to: ${loginUrl}\n\nCheck browser console for details.`);
+          return;
+        }
+        
+        const u = await res.json();
+        console.log("Login successful:", u);
+        this.user.name = u.name;
+        this.user.loggedIn = true;
+        this.user.loginName = "";
+        localStorage.setItem("ever_user", JSON.stringify(u.name));
+        await this.fetchProfile();
+      } catch (error) {
+        console.error("Login network error:", error);
+        alert(`Login failed: Network error - ${error.message}\n\nTrying to connect to: ${loginUrl}\n\nThis might be a CORS issue or the server might be unreachable.`);
+      }
+    },
+    
+    logout() {
+      this.user.loggedIn = false;
+      this.user.name = "";
+      this.user.showProfile = false;
+      this.user.createdCourses = [];
+      this.user.leaderboardPositions = [];
+      localStorage.removeItem("ever_user");
+    },
+    
+    async fetchProfile() {
+      if (!this.user.loggedIn) return;
+      
+      // Try OAuth profile endpoint first
+      if (window.__AUTH_USER__) {
+        try {
+          const r = await fetch(API('/me/profile'), { credentials: 'include' });
+          if (r.ok) {
+            const p = await r.json();
+            this.user.createdCourses = p.createdCourses || [];
+            this.user.leaderboardPositions = p.leaderboardPositions || [];
+            return;
+          }
+        } catch (e) {
+          console.log('OAuth profile fetch failed, trying legacy:', e);
+        }
+      }
+      
+      // Fallback to legacy profile endpoint using consistent username
+      try {
+        const username = this.backendUsername;
+        if (username) {
+          const r = await fetch(API(`/users/${encodeURIComponent(username)}/profile`));
+          if (r.ok) {
+            const p = await r.json();
+            this.user.createdCourses = p.createdCourses || [];
+            this.user.leaderboardPositions = p.leaderboardPositions || [];
+            return;
+          }
+        }
+      } catch (e) {
+        console.log('Legacy profile fetch failed:', e);
+      }
+      
+      // Clear profile data if all methods fail
+      this.user.createdCourses = [];
+      this.user.leaderboardPositions = [];
+    },
+    
+    // UI hooks for the existing right-side profile panel
+    closeProfileModal() { 
+      this.user.showProfile = false; 
+      // Give the DOM a moment to show the map, then refresh it
+      this.$nextTick(() => {
+        if (this.map) {
+          this.map.invalidateSize();
+        }
+      });
+    },
+    
+    async loadCourseFromProfile(courseId) {
+        // Close the profile modal
+        this.user.showProfile = false;
+        
+        // Refresh map after closing profile
+        this.$nextTick(() => {
+          if (this.map) {
+            this.map.invalidateSize();
+          }
+        });
+        
+        // Load the selected course
+        this.selectedCourseId = courseId;
+        await this.loadSelectedCourse();
+        
+        // Scroll to courses section
+        const coursesSection = document.getElementById('courses');
+        if (coursesSection) {
+            coursesSection.scrollIntoView({ behavior: 'smooth' });
+        }
+    },
+    
+    async deleteLeaderboardEntry(entryId) {
+      if (!confirm("Delete this leaderboard entry?")) return;
+      const url = API(`/users/${encodeURIComponent(this.backendUsername)}/leaderboard/${entryId}`);
+      const r = await fetch(url, { method: "DELETE" });
+      if (!r.ok) { alert("Delete failed"); return; }
+      await this.fetchProfile();
+    },
+    
+    async deleteCourse(courseId) {
+      if (!confirm("Delete this course? This also deletes its leaderboard entries.")) return;
+      const url = API(`/users/${encodeURIComponent(this.backendUsername)}/courses/${courseId}`);
+      const r = await fetch(url, { method: "DELETE" });
+      if (!r.ok) { alert("Delete failed"); return; }
+      await this.fetchProfile();
+    },
+    
+
     /* -------------------- COURSES -------------------- */
     async apiGet(path) {
         const res = await fetch(API(path), { credentials: 'include' });
@@ -399,7 +1479,8 @@ const app = createApp({
             const saved = await this.apiPost("/courses", {
             name: this.newCourseName,
             buffer_m: this.bufferMeters || 10,
-            gates
+            gates,
+            created_by: this.backendUsername
             });
             this.newCourseName = "";
             await this.loadCourses();
@@ -418,17 +1499,24 @@ const app = createApp({
 
             // Replace local gates with course gates (confirmed, non-editing)
             this.timeGates = [];
+            this.pairCheckpoints.clear();
+            this.pairNames.clear();
             for (const g of c.gates) {
-            this.timeGates.push({
-                id: `${g.pairId}_S`, pairId: g.pairId, name: g.name,
-                type: "start", lat: g.start.lat, lon: g.start.lon,
-                confirmed: true, editing: false
-            });
-            this.timeGates.push({
-                id: `${g.pairId}_E`, pairId: g.pairId, name: g.name,
-                type: "end", lat: g.end.lat, lon: g.end.lon,
-                confirmed: true, editing: false
-            });
+                this.timeGates.push({
+                    id: `${g.pairId}_S`, pairId: g.pairId, name: g.name,
+                    type: "start", lat: g.start.lat, lon: g.start.lon,
+                    confirmed: true, editing: false
+                });
+                this.timeGates.push({
+                    id: `${g.pairId}_E`, pairId: g.pairId, name: g.name,
+                    type: "end", lat: g.end.lat, lon: g.end.lon,
+                    confirmed: true, editing: false
+                });
+                if (Array.isArray(g.checkpoints)) {
+                    this.pairCheckpoints.set(g.pairId, g.checkpoints.map(cp => ({ lat: cp.lat, lon: cp.lon })));
+                }
+                // Store the custom name
+                this.pairNames.set(g.pairId, g.name);
             }
             this.bufferMeters = c.buffer_m;
             this.redrawGates();
@@ -452,23 +1540,24 @@ const app = createApp({
         },
 
         // [ADD] Leaderboard: submit a track (arcade-style name only)
-        async submitTrackToLeaderboard(trackId) {
-        if (!this.selectedCourseId) { alert("Select a course first."); return; }
-        if (!this.username) { alert("Enter a username first."); return; }
-        const t = this.tracks.find(x => x.id === trackId);
-        if (!t?.points?.length) { alert("Track has no points."); return; }
-
-        try {
-            const res = await this.apiPost(`/leaderboard/${this.selectedCourseId}/submit`, {
-            username: this.username,
-            points: t.points.map(p => ({ lat: p.lat, lon: p.lon, ele: p.ele ?? null, time: p.time ?? null }))
-            });
-            await this.fetchLeaderboard();
-            alert(`Submitted! Total: ${res.total_time_sec}s`);
-        } catch (e) {
-            alert(`Submission failed: ${e.message || e}`);
-        }
-        },
+    async submitTrackToLeaderboard(trackId) {
+      if (!this.user.loggedIn) { alert("Please login first."); return; }
+      const t = this.tracks.find(x => x.id === trackId);
+      if (!t) return;
+      const payload = { username: this.backendUsername, points: t.points };
+      const r = await fetch(API(`/leaderboard/${this.selectedCourseId}/submit`), {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify(payload)
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(()=>({detail:"Submit failed"}));
+        alert(err.detail || "Submit failed");
+        return;
+      }
+      await this.fetchLeaderboard?.();
+      await this.fetchProfile();
+    },
     /* -------------------- API -------------------- */
     async apiPost(path, body) {
         const res = await fetch(API(path), {
@@ -484,14 +1573,27 @@ const app = createApp({
         return res.json();
     },
 
+    async apiDelete(path) {
+        const res = await fetch(API(path), {
+            method: "DELETE",
+            credentials: 'include'
+        });
+        if (!res.ok) {
+            let msg; try { msg = (await res.json()).detail || await res.text(); } catch { msg = await res.text(); }
+            throw new Error(msg);
+        }
+        return res.json();
+    },
+
     gatePairsToApiPayload() {
     return this.gatePairs
         .filter(p => p.start && p.end && p.confirmed)
         .map(p => ({
-        pairId: p.pairId,
-        name: p.name || `Gate Pair ${p.pairId}`,
-        start: { lat: p.start.lat, lon: p.start.lon },
-        end:   { lat: p.end.lat,   lon: p.end.lon }
+            pairId: p.pairId,
+            name: p.name || `Gate Pair ${p.pairId}`,
+            start: { lat: p.start.lat, lon: p.start.lon },
+            end:   { lat: p.end.lat,   lon: p.end.lon },
+            checkpoints: p.checkpoints.map(c => ({ lat: c.lat, lon: c.lon }))
         }));
     },
     /* -------------------- MAP INIT -------------------- */
@@ -568,7 +1670,7 @@ const app = createApp({
       this.clearLayerArray(this.trackLayers);
     },
 
-    /* -------------------- GATES (NO CHECKPOINTS) -------------------- */
+    /* -------------------- GATES -------------------- */
     addGatePair() {
       const c = this.map.getCenter();
       const offset = 0.001; // ~100m-ish latitude/longitude-ish (varies by lat)
@@ -604,11 +1706,20 @@ const app = createApp({
       this.redrawGates();
     },
 
-    saveAndConfirmGate(pairId) {
-      // copy name from start gate (if edited), mark pair confirmed & stop editing
-      const start = this.timeGates.find(g => g.pairId === pairId && g.type === 'start');
-      const newName = start?.name || `Gate Pair ${pairId}`;
+    updatePairName(pairId, newName) {
+      // Update the persistent name storage
+      this.pairNames.set(pairId, newName);
+    },
 
+    saveAndConfirmGate(pairId) {
+      // Get the current name from the gatePairs (which includes any UI edits)
+      const pair = this.gatePairs.find(p => p.pairId === pairId);
+      const newName = pair?.name || `Gate Pair ${pairId}`;
+      
+      // Store the name persistently
+      this.pairNames.set(pairId, newName);
+
+      // Mark gates as confirmed and stop editing
       this.timeGates = this.timeGates.map(g => {
         if (g.pairId !== pairId) return g;
         return { ...g, name: newName, confirmed: true, editing: false };
@@ -620,12 +1731,16 @@ const app = createApp({
 
     removeGatePair(pairId) {
       this.timeGates = this.timeGates.filter(g => g.pairId !== pairId);
+      this.pairCheckpoints.delete(pairId);
+      this.pairNames.delete(pairId);
       this.redrawGates();
       this.recalcAllSegmentTimes();
     },
 
     clearAllGates() {
       this.timeGates = [];
+      this.pairCheckpoints.clear();
+      this.pairNames.clear();
       this.redrawGates();
       this.recalcAllSegmentTimes();
     },
@@ -634,6 +1749,28 @@ const app = createApp({
       // choose the smallest positive integer not used yet
       const used = new Set(this.timeGates.map(g => g.pairId));
       let i = 1; while (used.has(i)) i += 1; return i;
+    },
+
+    addCheckpoint(pairId) {
+      const pair = this.gatePairs.find(p => p.pairId === pairId);
+      if (pair) {
+        const newCheckpoint = { lat: pair.start.lat, lon: pair.start.lon };
+        if (!this.pairCheckpoints.has(pairId)) {
+          this.pairCheckpoints.set(pairId, []);
+        }
+        this.pairCheckpoints.get(pairId).push(newCheckpoint);
+        this.redrawGates();
+      }
+    },
+
+    removeLastCheckpoint(pairId) {
+      if (this.pairCheckpoints.has(pairId)) {
+        const checkpoints = this.pairCheckpoints.get(pairId);
+        if (checkpoints.length > 0) {
+          checkpoints.pop();
+          this.redrawGates();
+        }
+      }
     },
 
     /* -------------------- TRACKS -------------------- */
@@ -689,40 +1826,64 @@ const app = createApp({
     },
 
     redrawGates() {
-      // remove old gate markers then rebuild from state
-      this.clearLayerArray(this.gateMarkers);
+    this.clearLayerArray(this.gateMarkers);
+    this.clearLayerArray(this.checkpointMarkers);
 
-      for (const gate of this.timeGates) {
+    // Draw Start/End markers as before
+    for (const gate of this.timeGates) {
         const isStart = gate.type === 'start';
         const isEditing = gate.editing;
         const isConfirmed = gate.confirmed;
 
-        // simple, readable style
         const bg = isStart ? (isConfirmed ? '#10b981' : '#f59e0b') : (isConfirmed ? '#111827' : '#f59e0b');
         const border = isStart ? (isConfirmed ? '#047857' : '#ea580c') : (isConfirmed ? '#ffffff' : '#ea580c');
         const label = isStart ? 'S' : 'E';
 
         const icon = L.divIcon({
-          className: 'gate-icon',
-          html: `<div style="background:${bg}; color:white; border-radius:50%; width:34px; height:34px; display:flex; align-items:center; justify-content:center; font-weight:700; border:3px solid ${border}; box-shadow:0 2px 6px rgba(0,0,0,.3);">${label}</div>`,
-          iconSize: [34,34],
-          iconAnchor: [17,17]
+        className: 'gate-icon',
+        html: `<div style="background:${bg}; color:white; border-radius:50%; width:34px; height:34px; display:flex; align-items:center; justify-content:center; font-weight:700; border:3px solid ${border}; box-shadow:0 2px 6px rgba(0,0,0,.3);">${label}</div>`,
+        iconSize: [34,34], iconAnchor: [17,17]
         });
 
         const marker = L.marker([gate.lat, gate.lon], {
-          icon,
-          draggable: isEditing || !isConfirmed
+        icon, draggable: isEditing || !isConfirmed
         }).addTo(this.map);
 
-        // no inline onclick; only Vue state drives updates
         marker.on('dragend', (e) => {
-          const ll = e.target.getLatLng();
-          gate.lat = ll.lat; gate.lon = ll.lng;
-          // update side-panel immediately (Vue reactive)
+        const ll = e.target.getLatLng();
+        gate.lat = ll.lat; gate.lon = ll.lng;
         });
 
         this.gateMarkers.push(marker);
-      }
+    }
+
+    // Draw checkpoints for pairs that are currently in memory (use computed pairs)
+    const pairs = this.gatePairs;
+    for (const pair of pairs) {
+        if (!Array.isArray(pair.checkpoints) || !pair.checkpoints.length) continue;
+
+        // color-tie to gate: use the start confirmed color hue (#10b981 green) but lighter bubble
+        const cpBorder = pair.confirmed ? '#10b981' : '#f59e0b';
+        pair.checkpoints.forEach((cp, idx) => {
+        const icon = L.divIcon({
+            className: 'cp-icon',
+            html: `<div style="background:white; color:${cpBorder}; border-radius:999px; border:2px solid ${cpBorder}; padding:2px 6px; font-size:12px; font-weight:700; box-shadow:0 1px 4px rgba(0,0,0,.25);">${idx+1}</div>`,
+            iconSize: [24, 22],
+            iconAnchor: [12, 11]
+        });
+        const m = L.marker([cp.lat, cp.lon], {
+            icon,
+            draggable: !!pair.editing  // only draggable in edit mode
+        }).addTo(this.map);
+
+        m.on('dragend', (e) => {
+            const ll = e.target.getLatLng();
+            cp.lat = ll.lat; cp.lon = ll.lng;
+        });
+
+        this.checkpointMarkers.push(m);
+        });
+    }
     },
 
     /* -------------------- SEGMENT TIMES -------------------- */
@@ -880,10 +2041,15 @@ const app = createApp({
         }
     },
   }
-}).mount('#app');
+});
 
-// Expose app instance for debugging
-window.app = app;
+// Mount the Vue app and expose it globally
+window.app = app.mount('#app');
+
+// Initialize OAuth
+document.getElementById('btn-login').addEventListener('click', loginGoogle);
+document.getElementById('btn-logout').addEventListener('click', logout);
+hydrateAuth();
 </script>
 </body>
 </html>

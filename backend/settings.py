@@ -27,10 +27,6 @@ except ValueError:
 STRAVA_CLIENT_SECRET = _require_env("STRAVA_CLIENT_SECRET")
 STRAVA_REDIRECT_URI = _require_env("STRAVA_REDIRECT_URI")
 
-# Admin Authentication
-ADMIN_USER = os.getenv("ADMIN_USER", "admin")
-ADMIN_PASS = os.getenv("ADMIN_PASS", "changeme")
-
 # Application Security
 SECRET_KEY = _require_env("SECRET_KEY")
 FRONTEND_ORIGIN = _require_env("FRONTEND_ORIGIN")

@@ -6,7 +6,6 @@ Main FastAPI application for GPX track analysis and leaderboard management.
 from __future__ import annotations
 
 import os
-import secrets
 import json
 import math
 from contextlib import asynccontextmanager
@@ -16,56 +15,54 @@ from urllib.parse import urlparse
 
 import gpxpy
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, Body, status, Request
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from sqlmodel import Field as ORMField, SQLModel, Session, create_engine, select
 from dotenv import load_dotenv, find_dotenv
-from starlette.responses import FileResponse, Response
+from starlette.responses import FileResponse, Response, JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
 
-from .routes_strava import router as strava_router
+from .strava import router as strava_router
 from .db_core import engine, get_session
 from .settings import SECRET_KEY, FRONTEND_ORIGIN
 
-# =============================================================================
-# Admin Authentication
-# =============================================================================
-
+# Load environment variables
 load_dotenv(find_dotenv(), override=False)
 
-security = HTTPBasic()
+def env_bool(name: str, default: bool) -> bool:
+    v = os.getenv(name, str(default)).lower()
+    return v in ("1", "true", "yes")
 
+# --- Super user for username-only demo auth ---
+SUPER_USER_NAME = os.getenv("SUPER_USER_NAME", "EVERGREEN")  # set in env for prod
+BACKEND_URL = os.getenv("BACKEND_URL", "")  # Optional backend URL for frontend config
+def is_super(user_name: str) -> bool:
+    return bool(user_name) and user_name == SUPER_USER_NAME
 
-def _admin_creds():
-	"""Get admin credentials from environment variables."""
-	return os.getenv("ADMIN_USER", "admin"), os.getenv("ADMIN_PASS", "changeme")
-
-
-def require_admin(credentials: HTTPBasicCredentials = Depends(security)) -> bool:
-	"""Require valid admin credentials for protected endpoints."""
-	ADMIN_USER, ADMIN_PASS = _admin_creds()
-	ok_user = secrets.compare_digest(credentials.username, ADMIN_USER)
-	ok_pass = secrets.compare_digest(credentials.password, ADMIN_PASS)
-	if not (ok_user and ok_pass):
-		raise HTTPException(
-			status_code=status.HTTP_401_UNAUTHORIZED,
-			detail="Invalid credentials",
-			headers={"WWW-Authenticate": "Basic"},
-		)
-	return True
+# OAuth and cookie configuration
+FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "http://127.0.0.1:5173")
+SECRET_KEY = os.getenv("SECRET_KEY", "dev_please_override")
+COOKIE_DOMAIN = os.getenv("COOKIE_DOMAIN") or None
+COOKIE_SECURE = env_bool("COOKIE_SECURE", False)
+COOKIE_SAMESITE = os.getenv("COOKIE_SAMESITE", "lax")  # 'lax' | 'none' | 'strict'
 # =============================================================================
 # Database Models
 # =============================================================================
-
 
 class Course(SQLModel, table=True):
 	"""Course model for storing gate pair configurations."""
 	id: Optional[int] = ORMField(default=None, primary_key=True)
 	name: str
 	buffer_m: int = 10
-	gates_json: str  # JSON: [{"pairId":1,"name":"Gate Pair 1","start":{"lat":..,"lon":..},"end":{"lat":..,"lon":..}}, ...]
+	gates_json: str  # JSON: [{"pairId":1,"name":"Gate Pair 1","start":{"lat":..,"lon":..},"end":{"lat":..,"lon":..}}, "checkpoints": [{"lat":..,"lon":..}, ...], ...]
+	created_by: Optional[str] = None  # Username of creator
+
+
+class User(SQLModel, table=True):
+	"""User model for basic authentication."""
+	id: Optional[int] = ORMField(default=None, primary_key=True)
+	name: str = ORMField(index=True, unique=True)
+	created_at: datetime = ORMField(default_factory=datetime.utcnow)
 
 
 class LeaderboardEntry(SQLModel, table=True):
@@ -112,31 +109,46 @@ if "http://localhost:3000" not in allowed_origins_list:
 if "https://nice-water-01234.azurestaticapps.net" not in allowed_origins_list:
 	allowed_origins_list.append("https://nice-water-01234.azurestaticapps.net")
 
-# Session middleware
 app.add_middleware(
-	SessionMiddleware,
-	secret_key=SECRET_KEY,
-	same_site="none",
-	https_only=True,
+    CORSMiddleware,
+    allow_origins=[FRONTEND_ORIGIN],
+    allow_credentials=True,
+    allow_methods=["GET","POST","PATCH","DELETE","OPTIONS"],
+    allow_headers=["*"],
 )
 
-# CORS middleware - allow any http/https origin by regex
 app.add_middleware(
-	CORSMiddleware,
-	allow_origins=[],  # empty because we use regex instead
-	allow_origin_regex=r"^https?://.*$",  # allow any scheme+host
-	allow_credentials=True,  # needed for session cookie
-	allow_methods=["*"],  # include GET/POST/PUT/PATCH/DELETE/OPTIONS
-	allow_headers=["*"],  # accept whatever the browser requests
-	expose_headers=["*"],
+    SessionMiddleware,
+    secret_key=SECRET_KEY,
+    session_cookie="sid",
+    https_only=COOKIE_SECURE,
+    same_site=COOKIE_SAMESITE,
+    domain=COOKIE_DOMAIN,
 )
 
 app.include_router(strava_router)
+
+# Include OAuth router
+from .routers.auth import router as auth_router
+app.include_router(auth_router, prefix="")
 
 @app.get("/health")
 def health():
 	"""Health check endpoint."""
 	return {"ok": True}
+
+@app.get("/healthz")
+def healthz():
+	return JSONResponse({"ok": True})
+
+
+@app.get("/config")
+def get_config():
+	"""Get frontend configuration."""
+	return {
+		"backend_url": BACKEND_URL,
+		"super_user_name": SUPER_USER_NAME,
+	}
 
 
 @app.get("/_debug/cors")
@@ -258,6 +270,24 @@ def points_near_with_time(points: List[Dict[str, Any]], target: Dict[str, float]
 			hits.append({"index": idx, "tMs": t_ms})
 	return hits
 
+def point_within_radius(p: Dict[str, Any], target: Dict[str, float], radius_m: int) -> bool:
+    return haversine_m(p["lat"], p["lon"], target["lat"], target["lon"]) <= radius_m
+
+def pass_through_target_between(points: List[Dict[str, Any]], target: Dict[str, float], i_start: int, i_end: int, radius_m: int) -> bool:
+    for i in range(i_start, i_end + 1):
+        if point_within_radius(points[i], target, radius_m):
+            return True
+    return False
+
+
+def checkpoints_valid_between(points: List[Dict[str, Any]], checkpoints: List[Dict[str, float]], i_start: int, i_end: int, radius_m: int) -> bool:
+    if not checkpoints:
+        return True
+    for cp in checkpoints:
+        if not pass_through_target_between(points, cp, i_start, i_end, radius_m):
+            return False
+    return True
+
 
 def compute_segment_times(points: List[Dict[str, Any]], gates: List[Dict[str, Any]], buffer_m: int):
 	"""
@@ -272,19 +302,40 @@ def compute_segment_times(points: List[Dict[str, Any]], gates: List[Dict[str, An
 	out: List[Dict[str, Any]] = []
 	for g in gates:
 		name = g.get("name") or f"Pair {g['pairId']}"
+		checkpoints = g.get("checkpoints") or []
+
 		starts = points_near_with_time(points, g["start"], buffer_m)
-		ends = points_near_with_time(points, g["end"], buffer_m)
+		ends   = points_near_with_time(points, g["end"],   buffer_m)
+
 		if not starts or not ends:
-			out.append({"segment": name, "timeSec": "N/A"})
+			out.append({"segment": name, "timeSec": "N/A", "valid": False})
 			continue
-		best = math.inf
+
+		best_dt = math.inf
+		best_pair = None  # (s_index, e_index)
+
 		for s in starts:
+			sidx = s["index"]
+			s_ms = s["tMs"]
 			for e in ends:
-				if e["index"] > s["index"]:
-					dt = (e["tMs"] - s["tMs"]) / 1000.0
-					if dt > 0 and dt < best:
-						best = dt
-		out.append({"segment": name, "timeSec": "N/A" if best is math.inf else int(round(best))})
+				eidx = e["index"]
+				if eidx <= sidx:
+					continue
+				dt = (e["tMs"] - s_ms) / 1000.0
+				if dt > 0 and dt < best_dt:
+					best_dt = dt
+					best_pair = (sidx, eidx)
+
+		if best_pair is None:
+			out.append({"segment": name, "timeSec": "N/A", "valid": False})
+			continue
+
+		sidx, eidx = best_pair
+		is_valid = checkpoints_valid_between(points, checkpoints, sidx, eidx, buffer_m)
+
+		time_out = int(round(best_dt))
+		out.append({"segment": name, "timeSec": time_out, "valid": is_valid})
+
 	return out
 
 
@@ -300,7 +351,7 @@ def gates_from_course(c: Course) -> List[Dict[str, Any]]:
 
 def course_to_dict(c: Course) -> Dict[str, Any]:
 	"""Convert course to dictionary format."""
-	return {"id": c.id, "name": c.name, "buffer_m": c.buffer_m, "gates": gates_from_course(c)}
+	return {"id": c.id, "name": c.name, "buffer_m": c.buffer_m, "gates": gates_from_course(c), "created_by": c.created_by}
 
 
 # =============================================================================
@@ -314,6 +365,7 @@ def create_course(body: Dict[str, Any], session: Session = Depends(get_session))
 	name = (body.get("name") or "").strip()
 	buffer_m = int(body.get("buffer_m") or 10)
 	gates = body.get("gates") or []
+	created_by = (body.get("created_by") or "").strip() or None
 
 	if not name:
 		raise HTTPException(400, "Course name required")
@@ -324,8 +376,12 @@ def create_course(body: Dict[str, Any], session: Session = Depends(get_session))
 	for g in gates:
 		if not {"pairId", "start", "end"} <= set(g.keys()):
 			raise HTTPException(400, "Invalid gate pair payload")
+		if "checkpoints" in g:
+			cps = g["checkpoints"]
+			if not isinstance(cps, list) or any(not {"lat", "lon"} <= set(cp.keys()) for cp in cps):
+				raise HTTPException(400, "Invalid checkpoints payload")
 
-	c = Course(name=name, buffer_m=buffer_m, gates_json=json.dumps(gates))
+	c = Course(name=name, buffer_m=buffer_m, gates_json=json.dumps(gates), created_by=created_by)
 	session.add(c)
 	session.commit()
 	session.refresh(c)
@@ -360,6 +416,143 @@ def delete_course(course_id: int, session: Session = Depends(get_session)):
 
 
 # =============================================================================
+# User Authentication Endpoints
+# =============================================================================
+
+
+@app.post("/users/login")
+def login_user(body: Dict[str, Any], session: Session = Depends(get_session)):
+	"""Login or register a user by name."""
+	name = (body.get("name") or "").strip()
+	if not name:
+		raise HTTPException(400, "Name is required")
+	
+	if len(name) > 40:
+		raise HTTPException(400, "Name must be 40 characters or less")
+	
+	# Check if user exists
+	user = session.exec(select(User).where(User.name == name)).first()
+	
+	if not user:
+		# Create new user
+		user = User(name=name)
+		session.add(user)
+		session.commit()
+		session.refresh(user)
+	
+	return {
+		"id": user.id,
+		"name": user.name,
+		"created_at": user.created_at.isoformat() + "Z"
+	}
+
+
+@app.get("/users/{user_name}/profile")
+def get_user_profile(user_name: str, session: Session = Depends(get_session)):
+	"""Get user profile with leaderboard positions and created courses."""
+	user = session.exec(select(User).where(User.name == user_name)).first()
+	if not user:
+		raise HTTPException(404, "User not found")
+	
+	# Get user's leaderboard positions across all courses
+	leaderboard_entries = session.exec(
+		select(LeaderboardEntry).where(LeaderboardEntry.username == user_name)
+		.order_by(LeaderboardEntry.total_time_sec)
+	).all()
+	
+	leaderboard_positions = []
+	for entry in leaderboard_entries:
+		# Get course info
+		course = session.get(Course, entry.course_id)
+		if course:
+			# Calculate rank for this course
+			better_entries = session.exec(
+				select(LeaderboardEntry)
+				.where(LeaderboardEntry.course_id == entry.course_id)
+				.where(LeaderboardEntry.total_time_sec < entry.total_time_sec)
+			).all()
+			rank = len(better_entries) + 1
+			
+			leaderboard_positions.append({
+				"id": entry.id,
+				"courseId": course.id,
+				"courseName": course.name,
+				"rank": rank,
+				"time": entry.total_time_sec,
+				"created_at": entry.created_at.isoformat() + "Z"
+			})
+	
+	# Get user's created courses
+	created_courses = session.exec(
+		select(Course).where(Course.created_by == user_name)
+		.order_by(Course.id.desc())
+	).all()
+	
+	courses_data = [course_to_dict(c) for c in created_courses]
+	
+	return {
+		"user": {
+			"id": user.id,
+			"name": user.name,
+			"created_at": user.created_at.isoformat() + "Z"
+		},
+		"leaderboardPositions": leaderboard_positions,
+		"createdCourses": courses_data
+	}
+
+
+@app.delete("/users/{user_name}/leaderboard/{entry_id}")
+def delete_user_leaderboard_entry(user_name: str, entry_id: int, session: Session = Depends(get_session)):
+	"""Delete a user's leaderboard entry."""
+	# Verify user exists
+	user = session.exec(select(User).where(User.name == user_name)).first()
+	if not user:
+		raise HTTPException(404, "User not found")
+	
+	# Get and verify entry belongs to user
+	entry = session.get(LeaderboardEntry, entry_id)
+	if not entry:
+		raise HTTPException(404, "Leaderboard entry not found")
+	
+	if entry.username != user_name and not is_super(user_name):
+		raise HTTPException(403, "Cannot delete another user's entry")
+	
+	session.delete(entry)
+	session.commit()
+	return {"ok": True, "deleted_entry": entry_id}
+
+
+@app.delete("/users/{user_name}/courses/{course_id}")
+def delete_user_course(user_name: str, course_id: int, session: Session = Depends(get_session)):
+	"""Delete a user's course."""
+	# Verify user exists
+	user = session.exec(select(User).where(User.name == user_name)).first()
+	if not user:
+		raise HTTPException(404, "User not found")
+	
+	# Get and verify course belongs to user
+	course = session.get(Course, course_id)
+	if not course:
+		raise HTTPException(404, "Course not found")
+	
+	if course.created_by != user_name and not is_super(user_name):
+		raise HTTPException(403, "Cannot delete another user's course")
+	
+	# Delete all leaderboard entries for this course first
+	entries = session.exec(
+		select(LeaderboardEntry).where(LeaderboardEntry.course_id == course_id)
+	).all()
+	for entry in entries:
+		session.delete(entry)
+	
+	# Delete the course
+	session.delete(course)
+	session.commit()
+	
+	return {"ok": True, "deleted_course": course_id, "deleted_entries": len(entries)}
+
+
+# =============================================================================
 # Leaderboard Endpoints
 # =============================================================================
 
@@ -383,15 +576,39 @@ def submit_result(course_id: int, body: Dict[str, Any], session: Session = Depen
 		raise HTTPException(400, "Track does not complete the course (N/A present).")
 
 	total = sum(int(s["timeSec"]) for s in segs)
-	entry = LeaderboardEntry(
-		course_id=course_id,
-		username=username[:40],
-		total_time_sec=int(total),
-		segment_times_json=json.dumps(segs),
-	)
-	session.add(entry)
-	session.commit()
-	session.refresh(entry)
+	
+	# Check for existing entry for this user on this course
+	existing_entry = session.exec(
+		select(LeaderboardEntry).where(
+			LeaderboardEntry.course_id == course_id,
+			LeaderboardEntry.username == username[:40]
+		)
+	).first()
+	
+	if existing_entry:
+		# Update only if new time is better (faster)
+		if int(total) < existing_entry.total_time_sec:
+			existing_entry.total_time_sec = int(total)
+			existing_entry.segment_times_json = json.dumps(segs)
+			existing_entry.created_at = datetime.utcnow()  # Update timestamp for new record
+			session.add(existing_entry)
+			session.commit()
+			session.refresh(existing_entry)
+			entry = existing_entry
+		else:
+			# Return existing entry if new time is not better
+			entry = existing_entry
+	else:
+		# Create new entry if none exists
+		entry = LeaderboardEntry(
+			course_id=course_id,
+			username=username[:40],
+			total_time_sec=int(total),
+			segment_times_json=json.dumps(segs),
+		)
+		session.add(entry)
+		session.commit()
+		session.refresh(entry)
 
 	return {
 		"ok": True,
@@ -452,155 +669,6 @@ def segment_times(payload: Dict[str, Any] = Body(...)):
 		return {"segments": []}
 	segs = compute_segment_times(points, gates, buffer_m)
 	return {"segments": segs}
-
-
-# =============================================================================
-# Admin Endpoints
-# =============================================================================
-
-
-@app.get("/console")
-def console_index(request: Request, _admin: bool = Depends(require_admin)):
-	"""Serve admin console interface."""
-	# Path relative to project root
-	public_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "public")
-	return FileResponse(os.path.join(public_path, "console", "index.html"))
-
-
-@app.get("/console/{path:path}")
-def console_assets(path: str, _admin: bool = Depends(require_admin)):
-	"""Serve admin console assets."""
-	# Path relative to project root
-	base = os.path.join(os.path.dirname(os.path.dirname(__file__)), "public", "console")
-
-	# Default to index for empty paths
-	if path in ("", "/", "index.html"):
-		return FileResponse(os.path.join(base, "index.html"))
-
-	full_path = os.path.join(base, path)
-
-	# Quietly swallow missing favicon
-	if path == "favicon.ico" and not os.path.isfile(full_path):
-		return Response(status_code=204)
-
-	# If asset exists, serve it
-	if os.path.isfile(full_path):
-		return FileResponse(full_path)
-
-	# Fallback to SPA index to avoid "Asset not found" on hard refresh
-	return FileResponse(os.path.join(base, "index.html"))
-
-
-@app.get("/api/admin/ping")
-def admin_ping(_: bool = Depends(require_admin)):
-	"""Admin ping endpoint."""
-	return {"ok": True}
-
-
-@app.get("/api/admin/courses")
-def admin_list_courses(
-	_admin: bool = Depends(require_admin),
-	session: Session = Depends(get_session),
-):
-	"""List all courses with metadata for admin."""
-	courses = session.exec(select(Course)).all()
-	out = []
-	for c in courses:
-		gates = json.loads(c.gates_json) if c.gates_json else []
-		entries = session.exec(
-			select(LeaderboardEntry).where(LeaderboardEntry.course_id == c.id)
-		).all()
-		out.append({
-			"id": c.id,
-			"name": c.name,
-			"buffer_m": c.buffer_m,
-			"gates": len(gates),
-			"entries": len(entries),
-		})
-	# Sort by ID descending (newest first)
-	out.sort(key=lambda x: x["id"], reverse=True)
-	return {"courses": out}
-
-
-@app.get("/api/admin/leaderboard/{course_id}")
-def admin_get_leaderboard(
-	course_id: int,
-	_admin: bool = Depends(require_admin),
-	session: Session = Depends(get_session),
-):
-	"""Get leaderboard entries for admin with full details."""
-	c = session.get(Course, course_id)
-	if not c:
-		raise HTTPException(404, "Course not found")
-	q = session.exec(
-		select(LeaderboardEntry)
-		.where(LeaderboardEntry.course_id == course_id)
-		.order_by(LeaderboardEntry.total_time_sec, LeaderboardEntry.id)
-	).all()
-	entries = [{
-		"id": e.id,
-		"username": e.username,
-		"total_time_sec": e.total_time_sec,
-		"created_at": e.created_at.isoformat() + "Z",
-		"segments": json.loads(e.segment_times_json or "[]"),
-	} for e in q]
-	return {"course_id": course_id, "entries": entries}
-
-
-@app.delete("/api/admin/leaderboard/{entry_id}")
-def admin_delete_leaderboard_entry(
-	entry_id: int,
-	_admin: bool = Depends(require_admin),
-	session: Session = Depends(get_session),
-):
-	"""Delete a specific leaderboard entry."""
-	e = session.get(LeaderboardEntry, entry_id)
-	if not e:
-		raise HTTPException(404, "Entry not found")
-	session.delete(e)
-	session.commit()
-	return {"deleted": entry_id}
-
-
-@app.delete("/api/admin/leaderboard/by-course/{course_id}")
-def admin_clear_course_leaderboard(
-	course_id: int,
-	_admin: bool = Depends(require_admin),
-	session: Session = Depends(get_session),
-):
-	"""Clear all leaderboard entries for a course."""
-	# Ensure course exists
-	c = session.get(Course, course_id)
-	if not c:
-		raise HTTPException(404, "Course not found")
-	entries = session.exec(
-		select(LeaderboardEntry).where(LeaderboardEntry.course_id == course_id)
-	).all()
-	for e in entries:
-		session.delete(e)
-	session.commit()
-	return {"cleared_for_course": course_id, "count": len(entries)}
-
-
-@app.delete("/api/admin/courses/{course_id}")
-def admin_delete_course(
-	course_id: int,
-	_admin: bool = Depends(require_admin),
-	session: Session = Depends(get_session),
-):
-	"""Delete a course and all its leaderboard entries."""
-	c = session.get(Course, course_id)
-	if not c:
-		raise HTTPException(404, "Course not found")
-	# Delete leaderboard entries first (no FK cascade in this model)
-	entries = session.exec(
-		select(LeaderboardEntry).where(LeaderboardEntry.course_id == course_id)
-	).all()
-	for e in entries:
-		session.delete(e)
-	session.delete(c)
-	session.commit()
-	return {"deleted_course": course_id, "deleted_entries": len(entries)}
 
 
 
