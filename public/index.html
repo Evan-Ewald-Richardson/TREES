@@ -565,7 +565,7 @@ input:focus, select:focus, textarea:focus, button:focus{ outline:2px solid var(-
     </div>
     
     <nav class="topnav">
-      <div class="topnav-section" :class="{active: ui.showCourses}" @click="toggleCoursesModal">
+      <div class="topnav-section" :class="{active: isCoursesOpen}" @click="togglePanel('courses')">
         Courses
       </div>
       <!-- future sections can be added here -->
@@ -582,7 +582,7 @@ input:focus, select:focus, textarea:focus, button:focus{ outline:2px solid var(-
       
       <!-- Profile Area (when logged in) -->
       <div v-if="user.loggedIn" class="user-profile">
-        <button @click="toggleProfilePanel" class="profile-button">
+        <button @click="togglePanel('profile')" class="profile-button">
           <svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor">
             <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
             <circle cx="12" cy="7" r="4"/>
@@ -876,7 +876,7 @@ input:focus, select:focus, textarea:focus, button:focus{ outline:2px solid var(-
                 </h4>
                 <div class="muted" style="margin-bottom:4px; font-size:12px;">Save current confirmed gates as a reusable course</div>
                 <div class="row">
-                  <button @click="ui.showSaveCourse = true" class="btn" style="font-size:12px; padding:6px 10px;">Save Course…</button>
+                  <button @click="openPanel('save')" class="btn" style="font-size:12px; padding:6px 10px;">Save Course…</button>
                   <button @click="clearAllGates" class="btn btn-danger" style="font-size:12px; padding:6px 10px;">Clear All Gates</button>
                 </div>
               </div>
@@ -952,10 +952,10 @@ input:focus, select:focus, textarea:focus, button:focus{ outline:2px solid var(-
 
     <!-- RIGHT PANEL (MAP OR PROFILE) -->
     <div class="right">
-        <div id="map" :style="{display: (user.showProfile || ui.showCourses || ui.showSaveCourse) ? 'none' : 'block'}"></div>
+        <div id="map" :style="{display: isAnyPanelOpen ? 'none' : 'block'}"></div>
         
         <!-- Profile Panel -->
-        <div v-if="user.showProfile" class="profile-right-panel">
+        <div v-if="isProfileOpen" class="profile-right-panel">
           <div class="profile-header-right">
             <h3 style="margin:0; font-size:18px;">{{ user.name }}'s Profile</h3>
             <div style="display:flex; gap:8px;">
@@ -1061,12 +1061,12 @@ input:focus, select:focus, textarea:focus, button:focus{ outline:2px solid var(-
         </div>
         
         <!-- Courses Modal Panel -->
-        <div v-if="ui.showCourses" class="profile-right-panel">
+        <div v-if="isCoursesOpen" class="profile-right-panel">
           <div class="profile-header-right">
             <h3 style="margin:0; font-size:18px;">Courses</h3>
             <div style="display:flex; gap:8px;">
               <button @click="refreshCoursesGrid" class="btn btn-ghost" style="font-size:12px; padding:6px 10px;">Refresh</button>
-              <button @click="closeCoursesModal" class="btn btn-ghost" style="font-size:12px; padding:6px 10px;">Back to Map</button>
+              <button @click="closePanels" class="btn btn-ghost" style="font-size:12px; padding:6px 10px;">Back to Map</button>
             </div>
           </div>
 
@@ -1133,11 +1133,11 @@ input:focus, select:focus, textarea:focus, button:focus{ outline:2px solid var(-
         </div>
         
         <!-- Save Course Modal -->
-        <div v-if="ui.showSaveCourse" class="profile-right-panel">
+        <div v-if="isSaveOpen" class="profile-right-panel">
           <div class="profile-header-right">
             <h3 style="margin:0; font-size:18px;">Save Course</h3>
             <div style="display:flex; gap:8px;">
-              <button @click="ui.showSaveCourse = false" class="btn btn-ghost" style="font-size:12px; padding:6px 10px;">Cancel</button>
+              <button @click="closePanels" class="btn btn-ghost" style="font-size:12px; padding:6px 10px;">Cancel</button>
             </div>
           </div>
 
@@ -1249,7 +1249,7 @@ input:focus, select:focus, textarea:focus, button:focus{ outline:2px solid var(-
         if (window.app && window.app.user) {
           window.app.user.loggedIn = false;
           window.app.user.name = '';
-          window.app.user.showProfile = false;
+          window.app.closePanels?.();
           window.app.user.createdCourses = [];
           window.app.user.leaderboardPositions = [];
         }
@@ -1275,9 +1275,7 @@ const app = createApp({
         loading: false,
         error: null,
         ui: {
-          showProfile: false, // existing usage
-          showCourses: false,
-          showSaveCourse: false,
+          activePanel: null,
         },
         coursesGrid: [], // from /courses_summary
         newCourse: { name: "", description: "", imageFile: null, imagePreview: null },
@@ -1302,7 +1300,6 @@ const app = createApp({
             loggedIn: false,
             name: "",
             loginName: "",
-            showProfile: false,
             leaderboardPositions: [],
             createdCourses: []
         },
@@ -1325,6 +1322,18 @@ const app = createApp({
   },
 
   computed: {
+    isProfileOpen() {
+      return this.ui.activePanel === 'profile';
+    },
+    isCoursesOpen() {
+      return this.ui.activePanel === 'courses';
+    },
+    isSaveOpen() {
+      return this.ui.activePanel === 'save';
+    },
+    isAnyPanelOpen() {
+      return this.ui.activePanel !== null;
+    },
     isSuperUser() {
       return this.user.loggedIn && this.config.superUserName && this.user.name === this.config.superUserName;
     },
@@ -1398,6 +1407,41 @@ const app = createApp({
   },
 
   methods: {
+    /* -------------------- PANEL MANAGEMENT -------------------- */
+    invalidateMap() {
+      if (!this.map) return;
+      requestAnimationFrame(() => {
+        if (this.map && this.map.invalidateSize) {
+          this.map.invalidateSize();
+        }
+      });
+    },
+    setActivePanel(panel) {
+      const nextPanel = panel || null;
+      if (this.ui.activePanel === nextPanel) {
+        this.invalidateMap();
+        return;
+      }
+      this.ui.activePanel = nextPanel;
+      this.$nextTick(() => this.invalidateMap());
+      if (nextPanel === 'courses') {
+        this.refreshCoursesGrid();
+      }
+      if (nextPanel === 'profile' && this.user.loggedIn) {
+        this.fetchProfile();
+      }
+    },
+    openPanel(panel) {
+      this.setActivePanel(panel);
+    },
+    togglePanel(panel) {
+      const next = this.ui.activePanel === panel ? null : panel;
+      this.setActivePanel(next);
+    },
+    closePanels() {
+      this.setActivePanel(null);
+    },
+
     /* -------------------- SIDEBAR RESIZER -------------------- */
     setupSidebarResizer() {
       const left = document.querySelector('.left');
@@ -1487,7 +1531,7 @@ const app = createApp({
     logout() {
       this.user.loggedIn = false;
       this.user.name = "";
-      this.user.showProfile = false;
+      this.closePanels();
       this.user.createdCourses = [];
       this.user.leaderboardPositions = [];
       localStorage.removeItem("ever_user");
@@ -1533,27 +1577,14 @@ const app = createApp({
     },
     
     // UI hooks for the existing right-side profile panel
-    closeProfileModal() { 
-      this.user.showProfile = false; 
-      // Give the DOM a moment to show the map, then refresh it
-      this.$nextTick(() => {
-        if (this.map) {
-          this.map.invalidateSize();
-        }
-      });
+    closeProfileModal() {
+      this.closePanels();
     },
-    
+
     async loadCourseFromProfile(courseId) {
         // Close the profile modal
-        this.user.showProfile = false;
-        
-        // Refresh map after closing profile
-        this.$nextTick(() => {
-          if (this.map) {
-            this.map.invalidateSize();
-          }
-        });
-        
+        this.closePanels();
+
         // Load the selected course
         this.selectedCourseId = courseId;
         await this.loadSelectedCourse();
@@ -1592,44 +1623,6 @@ const app = createApp({
         return res.json();
      },
 
-    openCoursesModal() {
-      this.user.showProfile = false;
-      this.ui.showSaveCourse = false;
-      this.ui.showCourses = true;
-      this.$nextTick(() => { if (this.map) this.map.invalidateSize(); });
-      this.refreshCoursesGrid();
-    },
-    toggleCoursesModal() {
-      if (this.ui.showCourses) {
-        this.ui.showCourses = false;
-      } else {
-        this.user.showProfile = false;
-        this.ui.showSaveCourse = false;
-        this.ui.showCourses = true;
-        this.refreshCoursesGrid();
-      }
-      this.$nextTick(() => { if (this.map) this.map.invalidateSize(); });
-    },
-    closeCoursesModal() {
-      this.ui.showCourses = false;
-      this.$nextTick(() => { if (this.map) this.map.invalidateSize(); });
-    },
-    openProfilePanel() {
-      this.ui.showCourses = false;
-      this.ui.showSaveCourse = false;
-      this.user.showProfile = true;
-      this.$nextTick(() => { if (this.map) this.map.invalidateSize(); });
-    },
-    toggleProfilePanel() {
-      if (this.user.showProfile) {
-        this.user.showProfile = false;
-      } else {
-        this.ui.showCourses = false;
-        this.ui.showSaveCourse = false;
-        this.user.showProfile = true;
-      }
-      this.$nextTick(() => { if (this.map) this.map.invalidateSize(); });
-    },
     async refreshCoursesGrid() {
       try {
         this.coursesGrid = await this.apiGet("/courses_summary");
@@ -1638,7 +1631,7 @@ const app = createApp({
       }
     },
     loadCourseCard(id) {
-      this.ui.showCourses = false;
+      this.closePanels();
       this.selectedCourseId = id;
       this.$nextTick(async () => {
         await this.loadSelectedCourse(); // already implemented
@@ -1689,7 +1682,7 @@ const app = createApp({
         // Reset & load
         if (this.newCourse.imagePreview) URL.revokeObjectURL(this.newCourse.imagePreview);
         this.newCourse = { name: "", description: "", imageFile: null, imagePreview: null };
-        this.ui.showSaveCourse = false;
+        this.closePanels();
         await this.loadCourses();           // refresh select list
         await this.refreshCoursesGrid();    // refresh cards
         this.selectedCourseId = created.id;
