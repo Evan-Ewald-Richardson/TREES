@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -7,554 +7,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
-  <style>
-    body { margin:0; font-family: Arial, sans-serif; }
-    /* Legacy styles removed - using new viewport layout */
-    h1 { margin:0 0 4px 0; font-size:36px; }
-    .section { background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:12px; margin-top:12px; }
-    .upload { 
-      border:2px dashed var(--border); 
-      padding:20px; 
-      text-align:center; 
-      border-radius:var(--radius); 
-      background:var(--surface-2);
-      transition:all 0.2s ease;
-    }
-    .upload.dragover { 
-      background:rgba(109, 235, 85, 0.1); 
-      border-color:var(--brand-500);
-      transform:translateY(-2px);
-      box-shadow:var(--shadow);
-    }
-    button:disabled { background:#9ca3af; cursor:not-allowed; }
-    .muted { color:#6b7280; font-size:16px; }
-    .row { display:flex; gap:8px; flex-wrap:wrap; }
-    .track-pill { display:flex; align-items:center; gap:8px; background:#f3f4f6; border:1px solid #e5e7eb; padding:6px 8px; border-radius:999px; }
-    .dot { font-weight:bold; }
-    .gate-item { border:1px solid #e5e7eb; border-radius:8px; padding:8px; margin-top:8px; background:#fff; }
-    .gate-title { display:flex; align-items:center; justify-content:space-between; gap:8px; }
-    .gate-name { width:100%; border:1px solid #e5e7eb; border-radius:6px; padding:6px 8px; }
-    .coords { font-family:monospace; font-size:16px; color:#6b7280; }
-    .badge { padding:2px 6px; border-radius:999px; font-size:11px; font-weight:600; }
-    .start { background:#d1fae5; color:#065f46; }
-    .end { background:#e5e7eb; color:#111827; }
-    .status { font-size:14px; font-weight:700; color:#b45309; }
-    .ok { color:#065f46; }
-
-/* ===== Forest Design System: tokens (LIGHT as default) ===== */
-:root{
-  /* brand / forest tones - from Realtime Colors */
-  --brand-500:#6deb55; /* primary bright green */
-  --brand-600:#5dd145; /* darker primary */
-  --brand-700:#4db835; /* darkest primary */
-
-  /* auxiliary colors */
-  --secondary:#acc6d2; /* light blue */
-  --accent:#7f8cb9;    /* muted blue */
-
-  /* neutrals (light) */
-  --bg:#f9fcf9;         /* very light green background */
-  --surface-1:#ffffff;  /* pure white cards */
-  --surface-2:#f2f6f2;  /* slightly darker panels */
-  --text:#0e160c;       /* dark green text */
-  --muted:#4a5c47;      /* muted green text */
-  --border:#e1e8e1;     /* light green border */
-
-  /* states */
-  --success:#6deb55;    /* use primary for success */
-  --warn:#f59e0b;       /* amber warning */
-  --warn-600:#d97706;   /* darker amber for hover */
-  --danger:#ef4444;     /* red danger */
-  --danger-600:#dc2626; /* darker red for hover */
-
-  /* shape */
-  --radius:12px;
-  --radius-sm:8px;
-  --shadow:0 4px 16px rgba(14,22,12,.08);
-}
-
-
-/* ===== App frame refresh ===== */
-html, body { 
-  height:100%; 
-  margin:0;
-  padding:0;
-  overflow:hidden; /* Prevent page scrolling */
-}
-body{
-  background:var(--bg);
-  color:var(--text);
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
-}
-
-/* Fixed viewport layout */
-#app {
-  height:100vh;
-  display:flex;
-  flex-direction:column; /* header on top, container fills the rest */
-}
-
-.container {
-  display:flex;
-  flex:1;       /* take remaining space below the header */
-  height:auto;  /* no fixed height; flex handles it */
-}
-
-/* Keep existing layout, just enhance */
-.left{
-  position: relative;
-  background: var(--surface-2);
-  border-right: 1px solid var(--border);
-  padding: 16px;
-  /* initial width, but flexible */
-  width: clamp(320px, 32vw, 560px);
-  min-width: 320px;
-  max-width: 75vw;
-
-  /* scrolling inside the panel */
-  overflow-y: auto;
-  overflow-x: hidden;
-
-  height: 100%;
-  box-sizing: border-box;
-  flex: 0 0 auto;    /* don't stretch */
-  /* remove native browser handle */
-  resize: none;
-  scrollbar-width: thin;
-  scrollbar-color: var(--border) var(--surface-2);
-}
-
-/* Let flex children shrink and scroll */
-.container, .left, .right { min-height: 0; }
-
-/* Full-height, thin grab area on the right edge */
-.left .resizer {
-  position: absolute;
-  right: 0;
-  top: 0;
-  width: 10px;
-  height: 100%;
-  cursor: col-resize;
-  user-select: none;
-  touch-action: none;
-  background: transparent;
-  z-index: 20;
-}
-.left .resizer:hover { background: rgba(0,0,0,0.06); }
-
-/* While dragging, show a global resize cursor */
-body.resizing { cursor: col-resize !important; }
-
-.left::-webkit-scrollbar {
-  width: 8px;
-}
-
-.left::-webkit-scrollbar-track {
-  background: var(--surface-2);
-}
-
-.left::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 4px;
-}
-
-.left::-webkit-scrollbar-thumb:hover {
-  background: var(--muted);
-}
-.right{ 
-  background:var(--surface-1); 
-  flex:1; /* Take remaining space */
-  height:100%; /* Fill container height */
-  display:flex;
-}
-#map{ 
-  filter:saturate(1.05); 
-  width:100%;
-  height:100%; /* Fill right panel completely */
-}
-
-/* App header */
-.appbar{
-  display:flex; align-items:center; justify-content:space-between;
-  padding:16px 20px;
-  background:var(--surface-2);
-  border-bottom:1px solid var(--border);
-  box-shadow:var(--shadow);
-}
-.appbrand{ 
-  text-align:left;
-}
-.brand-title{ 
-  font-weight:900; 
-  font-size:24px; 
-  letter-spacing:1px; 
-  color:var(--brand-600);
-  margin-bottom:2px;
-}
-.brand-subtitle{ 
-  font-size:12px; 
-  font-weight:400; 
-  color:var(--muted); 
-  letter-spacing:0.3px;
-  margin-top:2px;
-}
-.brand-subtitle em {
-  font-style:italic;
-  font-weight:500;
-}
-
-/* User auth section */
-.user-auth {
-  display:flex;
-  align-items:center;
-  gap:12px;
-}
-
-.login-form {
-  display:flex;
-  align-items:center;
-  gap:8px;
-}
-
-.login-form input {
-  padding:6px 10px;
-  border:1px solid var(--border);
-  border-radius:6px;
-  font-size:14px;
-  min-width:120px;
-}
-
-.user-profile {
-  display:flex;
-  align-items:center;
-  gap:12px;
-}
-
-.profile-button {
-  display:flex;
-  align-items:center;
-  gap:6px;
-  padding:6px 12px;
-  background:var(--surface-1);
-  border:1px solid var(--border);
-  border-radius:6px;
-  cursor:pointer;
-  font-size:14px;
-  transition:all 0.2s ease;
-}
-
-.profile-button:hover {
-  background:var(--brand-500);
-  color:white;
-  border-color:var(--brand-500);
-}
-
-
-.close-button {
-  background:none;
-  border:none;
-  font-size:20px;
-  cursor:pointer;
-  color:var(--muted);
-  padding:8px;
-  border-radius:4px;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  min-width:32px;
-  min-height:32px;
-}
-
-.close-button:hover {
-  background:var(--border);
-  color:var(--text);
-}
-
-.close-button:active {
-  background:var(--brand-100);
-}
-
-/* Profile Right Panel */
-.profile-right-panel {
-  width: 100%;
-  height: 100%;
-  background: var(--bg);
-  overflow-y: auto;
-  padding: 16px;
-}
-
-.profile-header-right {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--border);
-}
-
-.profile-content-right {
-  height: calc(100% - 60px);
-  overflow-y: auto;
-}
-
-/* Profile sections styled like left panel */
-.profile-section {
-  margin:12px;
-}
-
-.profile-panel {
-  background:var(--surface-1);
-  border:1px solid var(--border);
-  border-radius:var(--radius);
-  overflow:hidden;
-  box-shadow:var(--shadow);
-  margin-bottom:12px;
-}
-
-.profile-panel-header {
-  background:var(--surface-2);
-  padding:12px 16px;
-  border-bottom:1px solid var(--border);
-  font-weight:700;
-  font-size:14px;
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-}
-
-.profile-panel-body {
-  padding:12px 16px;
-}
-
-.profile-item {
-  display:flex;
-  align-items:center;
-  gap:10px;
-  border:1px solid var(--border);
-  background:var(--surface-1);
-  border-radius:8px;
-  padding:8px;
-  margin-bottom:6px;
-  font-size:13px;
-}
-
-.profile-item:last-child {
-  margin-bottom:0;
-}
-
-.profile-item-content {
-  flex:1;
-  min-width:0;
-}
-
-.profile-item-title {
-  font-weight:600;
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap;
-}
-
-.profile-item-subtitle {
-  color:var(--muted);
-  font-size:12px;
-  margin-top:2px;
-}
-
-.profile-item-actions {
-  display:flex;
-  gap:6px;
-}
-
-.profile-empty {
-  text-align:center;
-  padding:20px;
-  color:var(--muted);
-  font-size:13px;
-}
-
-.profile-empty svg {
-  width:32px;
-  height:32px;
-  margin:0 auto 8px;
-  display:block;
-}
-
-/* Status indicator */
-.status-indicator {
-  display:inline-flex;
-  align-items:center;
-  gap:6px;
-  font-size:12px;
-  color:var(--success);
-  font-weight:500;
-  vertical-align:middle;
-}
-
-.status-dot {
-  width:6px;
-  height:6px;
-  background:var(--success);
-  border-radius:50%;
-}
-
-/* Buttons */
-button, .btn{
-  display:inline-flex; align-items:center; gap:8px;
-  border:0; border-radius:10px;
-  padding:8px 12px;
-  background:var(--brand-600); color:#fff; font-weight:600;
-  transition:transform .04s ease, box-shadow .2s ease, background .2s ease;
-  box-shadow: 0 2px 8px rgba(0,0,0,.18);
-  cursor:pointer;
-}
-button:hover, .btn:hover{ 
-  transform:translateY(-1px); 
-  background:var(--brand-700); 
-}
-button:disabled, .btn:disabled{ opacity:.6; cursor:not-allowed; }
-
-.btn-ghost{ 
-  background:transparent; 
-  color:var(--text); 
-  border:1px solid var(--border); 
-}
-.btn-ghost:hover{ 
-  background:var(--surface-2); 
-  border-color:var(--muted);
-  color:var(--text);
-}
-
-.btn-warn{ 
-  background:var(--warn); 
-  color:#111; 
-}
-.btn-warn:hover{ 
-  background:var(--warn-600); 
-  color:#111;
-}
-
-.btn-danger{ 
-  background:var(--danger); 
-}
-.btn-danger:hover{
-  background:var(--danger-600); 
-}
-
-/* Hide any controls that require auth unless .is-authed is present */
-body:not(.is-authed) .authed-only { display:none !important; }
-
-.profile-button {
-  background:var(--surface-1);
-  color:var(--text);
-  border:1px solid var(--border);
-  padding:6px 10px;
-  font-size:12px;
-  border-radius:6px;
-  cursor:pointer;
-  display:inline-flex;
-  align-items:center;
-  gap:6px;
-}
-
-.profile-button:hover {
-  background:var(--surface-2);
-  border-color:var(--muted);
-  transform:translateY(-1px);
-}
-
-/* Cards/sections */
-.section{
-  background:var(--surface-1);
-  border:1px solid var(--border);
-  border-radius:var(--radius);
-  padding:14px;
-  margin-top:12px;
-  box-shadow:var(--shadow);
-}
-h1, h2, h3{ margin:0 0 8px; }
-.muted{ color:var(--muted); }
-
-/* Collapsible panels */
-.panel{
-  border:1px solid var(--border);
-  border-radius:var(--radius);
-  background:var(--surface-1);
-  overflow:hidden;
-  box-shadow:var(--shadow);
-  margin-top:12px;
-}
-.panel > summary{
-  list-style:none; cursor:pointer; user-select:none;
-  padding:12px 14px; font-weight:700; display:flex; align-items:center; justify-content:space-between; gap:12px;
-  background:var(--surface-2);
-  border-bottom:1px solid transparent;
-}
-.panel > summary::-webkit-details-marker{ display:none; }
-.panel[open] > summary{ border-bottom:1px solid var(--border); }
-.panel .panel-body{ padding:12px 14px; }
-
-
-/* Form controls */
-input, select, textarea{
-  background:var(--surface-1); color:var(--text);
-  border:1px solid var(--border); border-radius:10px; padding:8px 10px;
-}
-input:focus, select:focus, textarea:focus, button:focus{ outline:2px solid var(--brand-600); outline-offset:1px; }
-
-/* Utility chips/pills (optional) */
-.badge{ border-radius:999px; font-size:11px; font-weight:700; padding:2px 8px; display:inline-block; }
-.badge.success{ background:rgba(34,197,94,.18); color:var(--success); }
-.badge.warn{ background:rgba(245,158,11,.18); color:var(--warn); }
-.badge.neutral{ background:rgba(15,23,42,.08); color:var(--text); }
-
-/* Modern SVG Icons */
-.icon{
-  width:20px; height:20px;
-  stroke:currentColor;
-  fill:none;
-  stroke-width:2;
-  stroke-linecap:round;
-  stroke-linejoin:round;
-}
-.icon-sm{ width:16px; height:16px; }
-.icon-lg{ width:24px; height:24px; }
-
-/* Upload area with icon - smaller for combined layout */
-.upload-icon{
-  width:32px; height:32px;
-  color:var(--muted);
-  margin:0 auto 8px;
-  stroke-width:1.5;
-}
-
-/* Combined upload container */
-.upload-container{
-  display:grid;
-  grid-template-columns: 1fr 1fr;
-  gap:16px;
-  margin-bottom:12px;
-}
-
-@media (max-width: 768px) {
-  .upload-container {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* Topbar sections (tab-like) */
-.topnav { display:flex; align-items:center; gap:8px; }
-.topnav-section {
-  display:flex; align-items:center; justify-content:center;
-  height:36px; min-width:96px; padding:0 12px;
-  background:var(--surface-1);
-  border:1px solid var(--border);
-  border-radius:8px;
-  font-weight:700; font-size:13px; letter-spacing:.2px;
-  cursor:pointer; user-select:none;
-}
-.topnav-section:hover { background:var(--surface-2); border-color:var(--muted); }
-.topnav-section.active { outline:2px solid var(--brand-600); outline-offset:0; }
-  </style>
+  <link rel="stylesheet" href="assets/app.css"/>
 </head>
 <body>
 <div id="app">
@@ -564,12 +17,7 @@ input:focus, select:focus, textarea:focus, button:focus{ outline:2px solid var(-
       <div class="brand-subtitle"><em>EV's Enduro Racing + MORE</em></div>
     </div>
     
-    <nav class="topnav">
-      <div class="topnav-section" :class="{active: isCoursesOpen}" @click="togglePanel('courses')">
-        Courses
-      </div>
-      <!-- future sections can be added here -->
-    </nav>
+    <nav class="topnav"></nav>
     
     <div class="user-auth">
       <!-- OAuth Login/Profile Area -->
@@ -646,7 +94,7 @@ input:focus, select:focus, textarea:focus, button:focus{ outline:2px solid var(-
               </div>
 
               <!-- Status Messages -->
-              <div class="muted" v-if="loading" style="margin-top:8px;">Processing…</div>
+              <div class="muted" v-if="loading" style="margin-top:8px;">ProcessingGǪ</div>
               <div style="margin-top:8px; color:var(--danger)" v-if="error">{{ error }}</div>
 
               <!-- Strava Activities (when expanded) -->
@@ -666,7 +114,7 @@ input:focus, select:focus, textarea:focus, button:focus{ outline:2px solid var(-
                 </div>
 
                 <div v-if="strava.error" style="color:var(--danger); margin-bottom:8px; font-size:12px;">{{ strava.error }}</div>
-                <div v-if="strava.loading" class="muted" style="margin-bottom:8px; font-size:12px;">Loading…</div>
+                <div v-if="strava.loading" class="muted" style="margin-bottom:8px; font-size:12px;">LoadingGǪ</div>
 
                 <div v-if="!strava.loading">
                     <div v-if="!strava.activities.length" class="muted" style="font-size:12px;">No activities found.</div>
@@ -680,7 +128,7 @@ input:focus, select:focus, textarea:focus, button:focus{ outline:2px solid var(-
                         </div>
                         <div class="muted" style="font-size:11px;">
                             {{ a.start_date_local || a.start_date }}
-                            <span v-if="a.distance"> · {{ (a.distance/1000).toFixed(2) }} km</span>
+                            <span v-if="a.distance"> -+ {{ (a.distance/1000).toFixed(2) }} km</span>
                         </div>
                         </div>
 
@@ -728,13 +176,17 @@ input:focus, select:focus, textarea:focus, button:focus{ outline:2px solid var(-
             <div class="panel-body">
               <div v-if="tracks.length > 0">
 
+                <div class="muted" style="margin:4px 0 8px; font-size:12px;" v-if="!user.loggedIn || !selectedCourseId">
+                  Login and select a course to submit routes.
+                </div>
+
                 <div class="tracks">
                     <div v-for="t in tracks" :key="t.id"
                         class="track-item"
                         style="display:flex; align-items:flex-start; gap:10px; border:1px solid var(--border); background:var(--surface-1); border-radius:10px; padding:8px;">
                     <!-- Per-track selection -->
                     <input type="checkbox" :checked="isSelected(t.id)" @change="toggleTrack(t.id)" style="margin-top:4px;" />
-                    <span class="dot" :style="{color:t.color}">●</span>
+                    <span class="dot" :style="{color:t.color}">&bull;</span>
                     <div style="flex:1; min-width:0;">
                         <div style="font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ t.name }}</div>
                         <div class="muted">{{ t.points.length }} pts</div>
@@ -745,14 +197,20 @@ input:focus, select:focus, textarea:focus, button:focus{ outline:2px solid var(-
                             <strong>{{ seg.segment }}:</strong>
                             <span v-if="seg.timeSec !== 'N/A'">{{ seg.timeSec }}s</span>
                             <span v-else>N/A</span>
-                            <span v-if="seg.valid === true" style="color:var(--success); font-weight:700; margin-left:6px;">✓</span>
-                            <span v-else-if="seg.valid === false" style="color:var(--danger); font-weight:700; margin-left:6px;">✗</span>
+                            <span v-if="seg.valid === true" style="color:var(--success); font-weight:700; margin-left:6px;">&#10003;</span>
+                            <span v-else-if="seg.valid === false" style="color:var(--danger); font-weight:700; margin-left:6px;">&#10007;</span>
                         </div>
                         </div>
                     </div>
 
-                    <!-- Per-track remove -->
-                    <button @click="removeTrack(t.id)" class="btn btn-danger">Remove</button>
+                    <!-- Actions: Submit + Remove -->
+                    <div style="display:flex; flex-direction:column; gap:6px; align-items:flex-end;">
+                      <div style="position:relative;">
+                        <button @click="submitTrackToLeaderboard(t.id)" :disabled="!user.loggedIn || !selectedCourseId" class="btn">Submit</button>
+                        <div v-if="(!user.loggedIn || !selectedCourseId)" @click="submitClickBlocked = true" style="position:absolute; inset:0; cursor:not-allowed;"></div>
+                      </div>
+                      <button @click="removeTrack(t.id)" class="btn btn-danger">Remove</button>
+                    </div>
                     </div>
                 </div>
               </div>
@@ -772,7 +230,7 @@ input:focus, select:focus, textarea:focus, button:focus{ outline:2px solid var(-
 
         <!-- COURSES -->
         <section id="courses" class="section">
-          <details class="panel">
+          <details class="panel" open>
             <summary>
               <div style="display:flex; align-items:center; gap:8px;">
                 <!-- Course/Target Icon -->
@@ -796,27 +254,42 @@ input:focus, select:focus, textarea:focus, button:focus{ outline:2px solid var(-
                       </svg>
                       Load Course
                     </h4>
-                    <button @click="loadCourses" class="btn btn-ghost" style="font-size:11px; padding:4px 8px;">
-                      <svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                        <polyline points="23 4 23 10 17 10"/>
-                        <polyline points="1 20 1 14 7 14"/>
-                        <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/>
-                      </svg>
-                      Refresh
-                    </button>
+                    <div class="row" style="align-items:center;"><button v-if="selectedCourseId" @click="deselectCourse" class="btn btn-ghost" style="font-size:12px; padding:6px 10px;">Deselect</button><button @click="openCoursesModal" class="btn" style="font-size:12px; padding:6px 10px;"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 18l6-6-6-6"/></svg>Browse</button></div>
                 </div>
 
-                <div class="muted" style="margin-bottom:4px; font-size:12px;">Load an existing course</div>
-                <div class="row">
-                <select v-model.number="selectedCourseId"
-                        style="flex:1; padding:6px 8px; border:1px solid var(--border); border-radius:6px; font-size:12px;">
-                    <option :value="null">— Select Course —</option>
-                    <option v-for="c in courses" :key="c.id" :value="c.id">
-                    {{ c.name }} ({{ c.gates.length }} gates, {{ c.buffer_m }}m)
-                    </option>
-                </select>
-                <button @click="loadSelectedCourse" class="btn" style="font-size:12px; padding:6px 10px;">Load</button>
-                <button @click="openCoursesModal" class="btn btn-ghost" style="font-size:11px; padding:4px 8px;">Browse</button>
+                <div class="muted" style="margin-bottom:4px; font-size:12px;">Open the Courses page to select and load a course.</div>
+                <div v-if="selectedCourseId" style="margin-top:8px;">
+                  <div class="row" style="align-items:center; justify-content:space-between; border:1px solid var(--border); border-radius:8px; padding:8px;">
+                    <div style="font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ selectedCourse?.name || ('Course ' + selectedCourseId) }}</div>
+                    <span class="badge success">Loaded</span>
+                  </div>
+                  <div style="margin-top:8px;">
+                    <div v-for="pair in gatePairs" :key="pair.pairId" class="gate-item" style="margin-bottom:8px;">
+                      <div class="gate-title">
+                        <div style="font-weight:600;">{{ pair.name }}</div>
+                        <span class="badge neutral">Gate {{ pair.pairId }}</span>
+                      </div>
+                      <div style="margin-top:6px; font-size:11px;">
+                        <span class="badge start">START</span>
+                        <span class="coords">{{ pair.start.lat.toFixed(6) }}, {{ pair.start.lon.toFixed(6) }}</span>
+                      </div>
+                      <div style="margin-top:4px; font-size:11px;">
+                        <span class="badge end">END</span>
+                        <span class="coords">{{ pair.end.lat.toFixed(6) }}, {{ pair.end.lon.toFixed(6) }}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div v-if="activeRoutes.length" style="margin-top:12px; border-top:1px solid var(--border); padding-top:12px;">
+                    <div class="row" style="align-items:center; gap:8px;">
+                      <label class="muted" style="font-size:12px;">Submit route:</label>
+                      <select v-model="submitRouteId" style="flex:1; padding:6px 8px; border:1px solid var(--border); border-radius:6px; font-size:12px;">
+                        <option :value="null">— Select Active Route —</option>
+                        <option v-for="t in activeRoutes" :key="t.id" :value="t.id">{{ t.name }}</option>
+                      </select>
+                      <button class="btn" :disabled="!user.loggedIn || !submitRouteId" @click="submitTrackToLeaderboard(submitRouteId)">Submit</button>
+                    </div>
+                    <div class="muted" v-if="!user.loggedIn" style="font-size:12px; margin-top:6px;">Login to submit to leaderboard</div>
+                  </div>
                 </div>
               </div>
 
@@ -828,16 +301,17 @@ input:focus, select:focus, textarea:focus, button:focus{ outline:2px solid var(-
                         <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/>
                         <line x1="4" y1="22" x2="4" y2="15"/>
                       </svg>
-                      Create Gates
+                      Create Course
                     </h4>
                     <div class="row">
-                    <button @click="addGatePair" class="btn">Add Gate</button>
+                      <button @click="startNewCourse" class="btn">Start New Course</button>
                     </div>
                 </div>
 
                 <div v-if="gatePairs.length === 0" class="muted" style="margin-bottom:8px; font-size:12px;">No gates yet. Click "Add Gate" to create timing points.</div>
+                <div v-if="selectedCourseId && !canEditGates" class="muted" style="margin-bottom:8px; font-size:12px;">Loaded course gates are read-only. Start a new course to edit.</div>
 
-                <div v-for="pair in gatePairs" :key="pair.pairId" class="gate-item" style="margin-bottom:8px;">
+                <div v-if="canEditGates" v-for="pair in gatePairs" :key="pair.pairId" class="gate-item" style="margin-bottom:8px;">
                     <div class="gate-title">
                     <input v-if="pair.editing" class="gate-name" :value="pair.name" @input="updatePairName(pair.pairId, $event.target.value)" placeholder="Gate pair name">
                     <div v-else style="font-weight:600;">{{ pair.name }}</div>
@@ -854,99 +328,23 @@ input:focus, select:focus, textarea:focus, button:focus{ outline:2px solid var(-
                     </div>
 
                     <div class="row" style="margin-top:8px;">
-                    <button v-if="!pair.editing" @click="startEditing(pair.pairId)" class="btn btn-warn" style="font-size:11px; padding:4px 8px;">Edit</button>
-                    <button v-if="pair.editing" @click="saveAndConfirmGate(pair.pairId)" class="btn" style="font-size:11px; padding:4px 8px;">Save</button>
-                    <button @click="removeGatePair(pair.pairId)" class="btn btn-danger" style="font-size:11px; padding:4px 8px;">Remove</button>
-                    <button v-if="pair.editing" @click="addCheckpoint(pair.pairId)" class="btn" style="font-size:11px; padding:4px 8px;">+ Point</button>
-                    <button v-if="pair.editing && (pair.checkpoints?.length)" @click="removeLastCheckpoint(pair.pairId)" class="btn btn-ghost" style="font-size:11px; padding:4px 8px;">- Point</button>
+                     <button v-if="!pair.editing" @click="startEditing(pair.pairId)" class="btn btn-warn" style="font-size:11px; padding:4px 8px;">Edit</button>
+                     <button v-if="pair.editing" @click="saveAndConfirmGate(pair.pairId)" class="btn" style="font-size:11px; padding:4px 8px;">Save</button>
+                     <button @click="removeGatePair(pair.pairId)" class="btn btn-danger" style="font-size:11px; padding:4px 8px;">Remove</button>
+                     <button v-if="pair.editing" @click="addCheckpoint(pair.pairId)" class="btn" style="font-size:11px; padding:4px 8px;">+ Point</button>
+                     <button v-if="pair.editing && (pair.checkpoints?.length)" @click="removeLastCheckpoint(pair.pairId)" class="btn btn-ghost" style="font-size:11px; padding:4px 8px;">- Point</button>
                     </div>
                     <div class="muted" style="margin-top:4px; font-size:10px;">Tip: drag markers on map when editing.</div>
                 </div>
-              </div>
-
-              <!-- Save Course Section (Bottom) -->
-              <div style="border-top:1px solid var(--border); padding-top:16px;">
-                <h4 style="margin:0 0 8px; display:flex; align-items:center; gap:6px;">
-                  <svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-                    <polyline points="17,21 17,13 7,13 7,21"/>
-                    <polyline points="7,3 7,8 15,8"/>
-                  </svg>
-                  Save Course
-                </h4>
-                <div class="muted" style="margin-bottom:4px; font-size:12px;">Save current confirmed gates as a reusable course</div>
-                <div class="row">
-                  <button @click="openPanel('save')" class="btn" style="font-size:12px; padding:6px 10px;">Save Course…</button>
-                  <button @click="clearAllGates" class="btn btn-danger" style="font-size:12px; padding:6px 10px;">Clear All Gates</button>
+                <div v-if="canEditGates" class="row" style="justify-content:flex-end; gap:8px; margin-top:8px;">
+                  <button @click="addGatePair" class="btn">Add Gate</button>
+                  <button @click="openPanel('save')" class="btn">Save Course</button>
+                  <button @click="clearAllGates" class="btn btn-danger">Clear All Gates</button>
                 </div>
-              </div>
+              </div>
             </div>
           </details>
         </section>
-
-        <!-- LEADERBOARD -->
-        <section id="leader" class="section" v-if="selectedCourseId">
-          <details class="panel">
-            <summary>
-              <div style="display:flex; align-items:center; gap:8px;">
-                <!-- Trophy/Leaderboard Icon -->
-                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                  <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/>
-                  <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/>
-                  <path d="M4 22h16"/>
-                  <path d="M10 14.66V17c0 .55.47.98.97 1.21C11.56 18.75 12 19.38 12 20s-.44 1.25-1.03 1.79C10.47 21.02 10 20.45 10 20v-5.34"/>
-                  <path d="M14 14.66V17c0 .55-.47.98-.97 1.21C12.44 18.75 12 19.38 12 20s.44 1.25 1.03 1.79C13.53 21.02 14 20.45 14 20v-5.34"/>
-                  <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>
-                </svg>
-                Leaderboard
-              </div>
-              <span class="muted">times & ranks</span>
-            </summary>
-            <div class="panel-body">
-              <div class="row" style="justify-content:space-between; align-items:center;">
-                  <h3 style="margin:0">Leaderboard</h3>
-                  <button @click="fetchLeaderboard" class="btn btn-ghost">
-                    <svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                      <polyline points="23 4 23 10 17 10"/>
-                      <polyline points="1 20 1 14 7 14"/>
-                      <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/>
-                    </svg>
-                    Refresh
-                  </button>
-              </div>
-
-              <div class="muted" style="margin-top:6px;">Login and submit any loaded track to the current course.</div>
-
-              <!-- Submit any of your uploaded tracks -->
-              <div style="margin-top:8px;">
-                  <div v-for="t in tracks" :key="t.id"
-                      style="display:flex; align-items:center; gap:10px; border:1px solid #e5e7eb; background:#fff; border-radius:10px; padding:8px; margin-bottom:6px;">
-                  <span class="dot" :style="{color:t.color}">●</span>
-                  <div style="flex:1; min-width:0;">
-                      <div style="font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ t.name }}</div>
-                      <div class="muted">{{ t.points.length }} pts</div>
-                  </div>
-                  <button @click="submitTrackToLeaderboard(t.id)" :disabled="!user.loggedIn" class="btn">Submit</button>
-                  </div>
-              </div>
-
-              <!-- Top times -->
-              <div v-if="leaderboard.length" style="margin-top:12px;">
-                  <div class="muted" style="margin-bottom:6px;">Top times</div>
-                  <div v-for="(e,i) in leaderboard" :key="e.id"
-                      style="display:flex; align-items:center; justify-content:space-between; gap:8px; border:1px solid #e5e7eb; background:#fff; border-radius:10px; padding:8px; margin-bottom:6px;">
-                  <div style="display:flex; gap:8px; align-items:center;">
-                      <div style="width:22px; text-align:center; font-weight:700;">#{{ i+1 }}</div>
-                      <div style="font-weight:600">{{ e.username }}</div>
-                  </div>
-                  <div style="font-weight:700">{{ e.total_time_sec }}s</div>
-                  </div>
-              </div>
-              <div class="muted" v-else style="margin-top:8px;">No entries yet.</div>
-            </div>
-          </details>
-        </section>
-        
         <div class="resizer" id="leftResizer" aria-label="Resize sidebar"></div>
     </div>
 
@@ -1002,7 +400,7 @@ input:focus, select:focus, textarea:focus, button:focus{ outline:2px solid var(-
                   <div v-for="course in user.createdCourses" :key="course.id" class="profile-item">
                     <div class="profile-item-content">
                       <div class="profile-item-title">{{ course.name }}</div>
-                      <div class="profile-item-subtitle">{{ course.gates.length }} gates • {{ course.buffer_m }}m buffer</div>
+                      <div class="profile-item-subtitle">{{ course.gates.length }} gates &bull; {{ course.buffer_m }}m buffer</div>
                     </div>
                     <div class="profile-item-actions">
                       <button @click="loadCourseFromProfile(course.id)" class="btn" style="font-size:11px; padding:4px 8px;">Load</button>
@@ -1107,7 +505,7 @@ input:focus, select:focus, textarea:focus, button:focus{ outline:2px solid var(-
                         </div>
 
                         <div class="muted" style="font-size:12px; margin-bottom:6px;">
-                          Gates: <strong>{{ courseGateCount(c) }}</strong> • Buffer: <strong>{{ c.buffer_m }}m</strong>
+                          Gates: <strong>{{ courseGateCount(c) }}</strong> &bull; Buffer: <strong>{{ c.buffer_m }}m</strong>
                         </div>
                         <div class="muted" style="font-size:12px; margin-bottom:6px;">
                           Leaderboard entries: <strong>{{ courseLeaderboardCount(c) }}</strong>
@@ -1116,7 +514,7 @@ input:focus, select:focus, textarea:focus, button:focus{ outline:2px solid var(-
                           Created: <strong>{{ formatDate(c.created_at) }}</strong>
                         </div>
                         <div class="muted" style="font-size:12px; margin-bottom:10px;">
-                          Created by: <strong>{{ c.created_by || '—' }}</strong>
+                          Created by: <strong>{{ c.created_by || '&mdash;' }}</strong>
                         </div>
 
                         <!-- Mini leaderboard -->
@@ -1166,7 +564,7 @@ input:focus, select:focus, textarea:focus, button:focus{ outline:2px solid var(-
                     </div>
                     <div style="display:flex; flex-direction:column; gap:8px;">
                       <input type="file" accept="image/*" @change="onCourseImageSelect">
-                      <div class="muted" style="font-size:12px;">Square works best (e.g., 512×512). PNG/JPG/WebP supported.</div>
+                      <div class="muted" style="font-size:12px;">Square works best (e.g., 512 &times; 512). PNG/JPG/WebP supported.</div>
                     </div>
                   </div>
                 </div>
@@ -1182,1153 +580,22 @@ input:focus, select:focus, textarea:focus, button:focus{ outline:2px solid var(-
 </div>
 
 
-<script>
-    // Backend API configuration
-    // Auto-detect local vs production
-    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-      window.API_BASE = "http://127.0.0.1:3000";  // Local development
-      window.STRAVA_BASE = "https://trees-race-app-aqd6bva2etcfaaeb.canadacentral-01.azurewebsites.net";  // Strava auth stays on hosted
-    } else {
-      window.API_BASE = "https://trees-race-app-aqd6bva2etcfaaeb.canadacentral-01.azurewebsites.net";  // Production
-      window.STRAVA_BASE = window.API_BASE;  // Same as API in production
-    }
-  
-    function API(path) {
-      // Route Strava endpoints to hosted server even in local dev
-      if (path.startsWith('/api/strava/')) {
-        return (window.STRAVA_BASE || window.API_BASE) + path;
-      }
-      return (window.API_BASE || "") + path;
-    }
 
-    // OAuth functionality
-    async function fetchMe() {
-      try {
-        const r = await fetch(`${window.API_BASE}/me`, { credentials: 'include' });
-        if (!r.ok) return { user: null };
-        return await r.json();
-      } catch { return { user: null }; }
-    }
 
-    function loginGoogle() {
-      const next = encodeURIComponent(location.href);
-      location.href = `${window.API_BASE}/auth/google/start?next=${next}`;
-    }
 
-    async function logout() {
-      await fetch(`${window.API_BASE}/auth/logout`, { method: 'POST', credentials: 'include' });
-      // Clear localStorage for legacy system compatibility
-      localStorage.removeItem("ever_user");
-      await hydrateAuth();
-    }
-
-    async function hydrateAuth() {
-      const { user } = await fetchMe();
-      const $avatar = document.getElementById('auth-avatar');
-      const $name = document.getElementById('auth-name');
-      const $login = document.getElementById('btn-login');
-      const $logout = document.getElementById('btn-logout');
-
-      if (user) {
-        $name.textContent = user.name || user.email;
-        if (user.avatar_url) { $avatar.src = user.avatar_url; $avatar.style.display = 'block'; }
-        else { $avatar.style.display = 'none'; }
-        $login.style.display = 'none';
-        $logout.style.display = 'inline-flex';
-        document.body.classList.add('is-authed');
-        // Store minimal display info in memory for other components
-        window.__AUTH_USER__ = user;
-        
-        // Also update Vue user state for compatibility with existing profile system
-        if (window.app && window.app.user) {
-          window.app.user.loggedIn = true;
-          window.app.user.name = user.name || user.email;
-          // Fetch the profile data for the Vue system
-          await window.app.fetchProfile?.();
-        }
-      } else {
-        $name.textContent = '';
-        $avatar.style.display = 'none';
-        $login.style.display = 'inline-flex';
-        $logout.style.display = 'none';
-        document.body.classList.remove('is-authed');
-        window.__AUTH_USER__ = null;
-        
-        // Also clear Vue user state
-        if (window.app && window.app.user) {
-          window.app.user.loggedIn = false;
-          window.app.user.name = '';
-          window.app.closePanels?.();
-          window.app.user.createdCourses = [];
-          window.app.user.leaderboardPositions = [];
-        }
-      }
-    }
-</script>
-
-<script>
-const { createApp } = Vue;
-
-const app = createApp({
-  data() {
-    return {
-        // Map & layers
-        map: null,
-        trackLayers: [],   // holds polylines + start/end markers for tracks
-        selectedTrackIds: [], // holds ids of selected tracks
-        gateMarkers: [],   // holds gate markers (for all pairs)
-        checkpointMarkers: [], // holds checkpoint markers (for all pairs)
-
-        // UI state
-        isDragOver: false,
-        loading: false,
-        error: null,
-        ui: {
-          activePanel: null,
-        },
-        coursesGrid: [], // from /courses_summary
-        refreshingCourses: false, // guard to prevent overlapping refreshes
-        newCourse: { name: "", description: "", imageFile: null, imagePreview: null },
-
-        // Data
-        tracks: [],        // [{id, name, points:[{lat, lon, ele?, time?}], color}]
-        trackColors: ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#14b8a6', '#111827'],
-        timeGates: [],      // flat list of gates: {id, pairId, name, type:'start'|'end', lat, lon, confirmed, editing}
-        pairCheckpoints: new Map(), // Map of pairId -> array of checkpoints [{lat, lon}]
-        pairNames: new Map(), // Map of pairId -> custom name string
-
-        // Constants
-        bufferMeters: 10,
-
-        // Leaderboard
-        courses: [],
-        selectedCourseId: null,
-        leaderboard: [],
-
-        // User system
-        user: {
-            loggedIn: false,
-            name: "",
-            loginName: "",
-            leaderboardPositions: [],
-            createdCourses: []
-        },
-        config: { superUserName: null },
-
-        // Strava
-        strava: {
-            connected: false,
-            athlete: null,
-            activities: [],
-            error: null,
-            open: false,
-            page: 1,
-            perPage: 5,
-            hasMore: false,
-            loading: false,
-            preview: { activityId: null, layer: null }
-        },
-    };
-  },
-
-  computed: {
-    isProfileOpen() {
-      return this.ui.activePanel === 'profile';
-    },
-    isCoursesOpen() {
-      return this.ui.activePanel === 'courses';
-    },
-    isSaveOpen() {
-      return this.ui.activePanel === 'save';
-    },
-    isAnyPanelOpen() {
-      return this.ui.activePanel !== null;
-    },
-    isSuperUser() {
-      return this.user.loggedIn && this.config.superUserName && this.user.name === this.config.superUserName;
-    },
-    
-    // Get a consistent username for backend operations
-    backendUsername() {
-      if (!this.user.loggedIn) return null;
-      
-      // For OAuth users, use the first name or email prefix
-      if (window.__AUTH_USER__) {
-        const oauthUser = window.__AUTH_USER__;
-        // Use first name if available, otherwise email prefix
-        if (oauthUser.name && oauthUser.name.includes(' ')) {
-          return oauthUser.name.split(' ')[0]; // "Evan Richardson" -> "Evan"
-        }
-        return oauthUser.name || oauthUser.email.split('@')[0];
-      }
-      
-      // For legacy users, use the name as-is
-      return this.user.name;
-    },
-    // build pairs from flat gates robustly
-    gatePairs() {
-      const groups = new Map();
-      for (const g of this.timeGates) {
-        if (!groups.has(g.pairId)) {
-          const customName = this.pairNames.get(g.pairId);
-          groups.set(g.pairId, {
-            pairId: g.pairId,
-            name: customName || g.name || `Gate Pair ${g.pairId}`,
-            start: null,
-            end: null,
-            checkpoints: this.pairCheckpoints.get(g.pairId) || [],
-            confirmed: false,
-            editing: false
-          });
-        }
-        const entry = groups.get(g.pairId);
-        entry[g.type] = g;                             // start or end
-        // Use custom name if available, otherwise fallback to gate name
-        const customName = this.pairNames.get(g.pairId);
-        entry.name = customName || g.name || entry.name;
-        entry.confirmed = !!(entry.start?.confirmed && entry.end?.confirmed);
-        entry.editing = !!(entry.start?.editing || entry.end?.editing);
-        // Keep checkpoints in sync
-        entry.checkpoints = this.pairCheckpoints.get(g.pairId) || [];
-      }
-      return Array.from(groups.values()).filter(p => p.start && p.end);
-    }
-  },
-
-  async mounted() {
-    this.initMap();
-    this.loadCourses();
-    this.checkStravaConnected();
-    this.setupSidebarResizer();
-    
-    // Fetch config and restore saved user
-    try {
-      const cfg = await fetch(API("/config")).then(r => r.json());
-      if (!window.API_BASE && cfg.backend_url) window.API_BASE = cfg.backend_url;
-      this.config.superUserName = cfg.super_user_name || null;
-    } catch(e) {}
-    
-    const saved = localStorage.getItem("ever_user");
-    if (saved) {
-      this.user.name = JSON.parse(saved);
-      this.user.loggedIn = true;
-      await this.fetchProfile();
-    }
-  },
-
-  methods: {
-    // Expose API helper for templates and methods
-    API(path) {
-      try { return (window.API ? window.API(path) : (window.API_BASE || '') + path); }
-      catch { return path; }
-    },
-    /* -------------------- PANEL MANAGEMENT -------------------- */
-    invalidateMap() {
-      if (!this.map) return;
-      requestAnimationFrame(() => {
-        if (this.map && this.map.invalidateSize) {
-          this.map.invalidateSize();
-        }
-      });
-    },
-    setActivePanel(panel) {
-      const nextPanel = panel || null;
-      if (this.ui.activePanel === nextPanel) {
-        this.invalidateMap();
-        return;
-      }
-      this.ui.activePanel = nextPanel;
-      this.$nextTick(() => this.invalidateMap());
-      if (nextPanel === 'courses') {
-        this.refreshCoursesGrid();
-      }
-      if (nextPanel === 'profile' && this.user.loggedIn) {
-        this.fetchProfile();
-      }
-    },
-    openPanel(panel) {
-      this.setActivePanel(panel);
-    },
-    togglePanel(panel) {
-      const next = this.ui.activePanel === panel ? null : panel;
-      this.setActivePanel(next);
-    },
-    openCoursesModal() {
-      if (this.ui.activePanel === 'courses') {
-        this.refreshCoursesGrid();
-      } else {
-        this.setActivePanel('courses');
-      }
-    },
-    closePanels() {
-      this.setActivePanel(null);
-    },
-
-    /* -------------------- SIDEBAR RESIZER -------------------- */
-    setupSidebarResizer() {
-      const left = document.querySelector('.left');
-      const resizer = left?.querySelector('.resizer');
-      if (!left || !resizer) return;
-
-      const MIN = 320;                 // matches CSS min-width
-      const MAX = Math.floor(window.innerWidth * 0.75);
-
-      let startX = 0, startW = 0, dragging = false;
-
-      const onMove = (e) => {
-        if (!dragging) return;
-        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-        const dx = clientX - startX;
-        const newW = Math.max(MIN, Math.min(MAX, startW + dx));
-        left.style.width = newW + 'px';
-        left.style.flex = '0 0 auto';   // keep fixed width during drag
-        if (this.map) this.map.invalidateSize(); // keep Leaflet happy
-        e.preventDefault?.();
-      };
-
-      const stop = () => {
-        if (!dragging) return;
-        dragging = false;
-        document.body.classList.remove('resizing');
-        window.removeEventListener('mousemove', onMove);
-        window.removeEventListener('mouseup', stop);
-        window.removeEventListener('touchmove', onMove);
-        window.removeEventListener('touchend', stop);
-      };
-
-      const start = (e) => {
-        dragging = true;
-        startX = e.touches ? e.touches[0].clientX : e.clientX;
-        startW = left.getBoundingClientRect().width;
-        document.body.classList.add('resizing');
-        window.addEventListener('mousemove', onMove);
-        window.addEventListener('mouseup', stop);
-        window.addEventListener('touchmove', onMove, { passive: false });
-        window.addEventListener('touchend', stop);
-        e.preventDefault?.();
-      };
-
-      resizer.addEventListener('mousedown', start);
-      resizer.addEventListener('touchstart', start, { passive: false });
-    },
-
-    /* -------------------- USER SYSTEM -------------------- */
-    async login() {
-      const name = (this.user.loginName || "").trim();
-      if (!name) return;
-      
-      const loginUrl = API("/users/login");
-      console.log("Attempting login to:", loginUrl, "with name:", name);
-      
-      try {
-        const res = await fetch(loginUrl, {
-          method: "POST",
-          headers: {"Content-Type":"application/json"},
-          body: JSON.stringify({ name })
-        });
-        
-        console.log("Login response status:", res.status);
-        
-        if (!res.ok) {
-          const errorData = await res.json().catch(() => ({}));
-          const errorMsg = errorData.detail || `Login failed (${res.status})`;
-          console.error("Login error details:", errorData);
-          alert(`Login failed: ${errorMsg}\n\nTrying to connect to: ${loginUrl}\n\nCheck browser console for details.`);
-          return;
-        }
-        
-        const u = await res.json();
-        console.log("Login successful:", u);
-        this.user.name = u.name;
-        this.user.loggedIn = true;
-        this.user.loginName = "";
-        localStorage.setItem("ever_user", JSON.stringify(u.name));
-        await this.fetchProfile();
-      } catch (error) {
-        console.error("Login network error:", error);
-        alert(`Login failed: Network error - ${error.message}\n\nTrying to connect to: ${loginUrl}\n\nThis might be a CORS issue or the server might be unreachable.`);
-      }
-    },
-    
-    logout() {
-      this.user.loggedIn = false;
-      this.user.name = "";
-      this.closePanels();
-      this.user.createdCourses = [];
-      this.user.leaderboardPositions = [];
-      localStorage.removeItem("ever_user");
-    },
-    
-    async fetchProfile() {
-      if (!this.user.loggedIn) return;
-      
-      // Try OAuth profile endpoint first
-      if (window.__AUTH_USER__) {
-        try {
-          const r = await fetch(API('/me/profile'), { credentials: 'include' });
-          if (r.ok) {
-            const p = await r.json();
-            this.user.createdCourses = p.createdCourses || [];
-            this.user.leaderboardPositions = p.leaderboardPositions || [];
-            return;
-          }
-        } catch (e) {
-          console.log('OAuth profile fetch failed, trying legacy:', e);
-        }
-      }
-      
-      // Fallback to legacy profile endpoint using consistent username
-      try {
-        const username = this.backendUsername;
-        if (username) {
-          const r = await fetch(API(`/users/${encodeURIComponent(username)}/profile`));
-          if (r.ok) {
-            const p = await r.json();
-            this.user.createdCourses = p.createdCourses || [];
-            this.user.leaderboardPositions = p.leaderboardPositions || [];
-            return;
-          }
-        }
-      } catch (e) {
-        console.log('Legacy profile fetch failed:', e);
-      }
-      
-      // Clear profile data if all methods fail
-      this.user.createdCourses = [];
-      this.user.leaderboardPositions = [];
-    },
-    
-    // UI hooks for the existing right-side profile panel
-    closeProfileModal() {
-      this.closePanels();
-    },
-
-    async loadCourseFromProfile(courseId) {
-        // Close the profile modal
-        this.closePanels();
-
-        // Load the selected course
-        this.selectedCourseId = courseId;
-        await this.loadSelectedCourse();
-        
-        // Scroll to courses section
-        const coursesSection = document.getElementById('courses');
-        if (coursesSection) {
-            coursesSection.scrollIntoView({ behavior: 'smooth' });
-        }
-    },
-    
-    async deleteLeaderboardEntry(entryId) {
-      if (!confirm("Delete this leaderboard entry?")) return;
-      const url = API(`/users/${encodeURIComponent(this.backendUsername)}/leaderboard/${entryId}`);
-      const r = await fetch(url, { method: "DELETE" });
-      if (!r.ok) { alert("Delete failed"); return; }
-      await this.fetchProfile();
-    },
-    
-    async deleteCourse(courseId) {
-      if (!confirm("Delete this course? This also deletes its leaderboard entries.")) return;
-      const url = API(`/users/${encodeURIComponent(this.backendUsername)}/courses/${courseId}`);
-      const r = await fetch(url, { method: "DELETE" });
-      if (!r.ok) { alert("Delete failed"); return; }
-      await this.fetchProfile();
-    },
-    
-
-    /* -------------------- COURSES -------------------- */
-    async apiGet(path) {
-        const res = await fetch(API(path), { credentials: 'include' });
-        if (!res.ok) {
-            let msg; try { msg = (await res.json()).detail || await res.text(); } catch { msg = await res.text(); }
-            throw new Error(msg);
-        }
-        return res.json();
-     },
-
-    async refreshCoursesGrid() {
-      if (this.refreshingCourses) return;
-      this.refreshingCourses = true;
-      try {
-        await this.loadCourses();
-      } finally {
-        this.refreshingCourses = false;
-      }
-    },
-    formatDate(iso) {
-      if (!iso) return '—';
-      const date = new Date(iso);
-      if (Number.isNaN(date.getTime())) return '—';
-      return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-    },
-    formatSeconds(total) {
-      const n = Number(total);
-      if (!Number.isFinite(n) || n < 0) return '—';
-      if (n < 60) {
-        return `${Math.round(n)}s`;
-      }
-      const hours = Math.floor(n / 3600);
-      const minutes = Math.floor((n % 3600) / 60);
-      const seconds = Math.round(n % 60);
-      const mm = hours ? String(minutes).padStart(2, '0') : String(minutes);
-      const ss = String(seconds).padStart(2, '0');
-      return hours ? `${hours}:${mm}:${ss}` : `${minutes}:${ss}`;
-    },
-    courseGateCount(course) {
-      if (!course) return 0;
-      if (typeof course.gate_count === 'number') return course.gate_count;
-      if (Array.isArray(course.gates)) return course.gates.length;
-      return 0;
-    },
-    courseLeaderboardCount(course) {
-      if (!course) return 0;
-      if (typeof course.leaderboard_count === 'number') return course.leaderboard_count;
-      if (Array.isArray(course.leaderboard)) return course.leaderboard.length;
-      return course.first_place ? 1 : 0;
-    },
-    loadCourseCard(id) {
-      this.closePanels();
-      this.selectedCourseId = id;
-      this.$nextTick(async () => {
-        await this.loadSelectedCourse(); // already implemented
-      });
-    },
-
-    onCourseImageSelect(e) {
-      const f = e.target.files && e.target.files[0];
-      if (!f) { 
-        this.newCourse.imageFile = null; 
-        this.newCourse.imagePreview = null; 
-        return; 
-      }
-      this.newCourse.imageFile = f;
-      if (this.newCourse.imagePreview) URL.revokeObjectURL(this.newCourse.imagePreview);
-      this.newCourse.imagePreview = URL.createObjectURL(f);
-    },
-
-    async saveAdvancedCourse() {
-      // Use your existing gate payload helper
-      const gates = this.gatePairsToApiPayload();
-      if (!gates.length) { alert("Confirm at least one gate pair before saving."); return; }
-      if (!this.newCourse.name) { alert("Enter a course name."); return; }
-
-      try {
-        // Step 1: create
-        const created = await this.apiPost("/courses", {
-          name: this.newCourse.name,
-          buffer_m: this.bufferMeters || 10,
-          gates,
-          created_by: this.backendUsername,
-          description: this.newCourse.description || null,
-          image_url: null
-        });
-
-        // Step 2: optional image upload
-        if (this.newCourse.imageFile) {
-          const fd = new FormData();
-          fd.append("file", this.newCourse.imageFile);
-          const r = await fetch(API(`/courses/${created.id}/image`), {
-            method: "POST",
-            body: fd,
-            credentials: "include"
-          });
-          if (!r.ok) { console.warn("Image upload failed"); }
-        }
-
-        // Reset & load
-        if (this.newCourse.imagePreview) URL.revokeObjectURL(this.newCourse.imagePreview);
-        this.newCourse = { name: "", description: "", imageFile: null, imagePreview: null };
-        this.closePanels();
-        await this.loadCourses();           // refresh select list + cards
-        this.selectedCourseId = created.id;
-        await this.loadSelectedCourse();
-      } catch (e) {
-        alert(`Save failed: ${e.message || e}`);
-      }
-    },
-
-        // [ADD] Courses: list
-    async loadCourses() {
-        try {
-            const data = await this.apiGet("/courses_summary");
-            const normalized = (Array.isArray(data) ? data : [])
-                .map(c => ({
-                    ...c,
-                    gates: Array.isArray(c.gates) ? c.gates : [],
-                }));
-            this.courses = normalized;
-            this.coursesGrid = normalized
-                .slice()
-                .sort((a, b) => {
-                    const aTime = a.created_at ? Date.parse(a.created_at) : 0;
-                    const bTime = b.created_at ? Date.parse(b.created_at) : 0;
-                    return bTime - aTime;
-                });
-        } catch (e) {
-            console.error(e);
-            this.courses = [];
-            this.coursesGrid = [];
-        }
-    },
-
-    // [ADD] Courses: load selected course into the map + state
-    async loadSelectedCourse() {
-        if (!this.selectedCourseId) return;
-        try {
-            const c = await this.apiGet(`/courses/${this.selectedCourseId}`);
-
-            // Replace local gates with course gates (confirmed, non-editing)
-            this.timeGates = [];
-            this.pairCheckpoints.clear();
-            this.pairNames.clear();
-            for (const g of c.gates) {
-                this.timeGates.push({
-                    id: `${g.pairId}_S`, pairId: g.pairId, name: g.name,
-                    type: "start", lat: g.start.lat, lon: g.start.lon,
-                    confirmed: true, editing: false
-                });
-                this.timeGates.push({
-                    id: `${g.pairId}_E`, pairId: g.pairId, name: g.name,
-                    type: "end", lat: g.end.lat, lon: g.end.lon,
-                    confirmed: true, editing: false
-                });
-                if (Array.isArray(g.checkpoints)) {
-                    this.pairCheckpoints.set(g.pairId, g.checkpoints.map(cp => ({ lat: cp.lat, lon: cp.lon })));
-                }
-                // Store the custom name
-                this.pairNames.set(g.pairId, g.name);
-            }
-            this.bufferMeters = c.buffer_m;
-            this.redrawGates();
-            await this.fetchLeaderboard();
-            await this.recalcAllSegmentTimes();
-        } catch (e) {
-            alert(`Load failed: ${e.message || e}`);
-        }
-        },
-
-        // [ADD] Leaderboard: fetch
-        async fetchLeaderboard() {
-        if (!this.selectedCourseId) { this.leaderboard = []; return; }
-        try {
-            const data = await this.apiGet(`/leaderboard/${this.selectedCourseId}`);
-            this.leaderboard = data.entries || [];
-        } catch (e) {
-            console.error(e);
-            this.leaderboard = [];
-        }
-        },
-
-        // [ADD] Leaderboard: submit a track (arcade-style name only)
-    async submitTrackToLeaderboard(trackId) {
-      if (!this.user.loggedIn) { alert("Please login first."); return; }
-      const t = this.tracks.find(x => x.id === trackId);
-      if (!t) return;
-      const payload = { username: this.backendUsername, points: t.points };
-      const r = await fetch(API(`/leaderboard/${this.selectedCourseId}/submit`), {
-        method: "POST",
-        headers: {"Content-Type":"application/json"},
-        body: JSON.stringify(payload)
-      });
-      if (!r.ok) {
-        const err = await r.json().catch(()=>({detail:"Submit failed"}));
-        alert(err.detail || "Submit failed");
-        return;
-      }
-      await this.fetchLeaderboard?.();
-      await this.fetchProfile();
-    },
-    /* -------------------- API -------------------- */
-    async apiPost(path, body) {
-        const res = await fetch(API(path), {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            credentials: 'include',         // <-- important
-            body: JSON.stringify(body)
-        });
-        if (!res.ok) {
-            let msg; try { msg = (await res.json()).detail || await res.text(); } catch { msg = await res.text(); }
-            throw new Error(msg);
-        }
-        return res.json();
-    },
-
-    async apiDelete(path) {
-        const res = await fetch(API(path), {
-            method: "DELETE",
-            credentials: 'include'
-        });
-        if (!res.ok) {
-            let msg; try { msg = (await res.json()).detail || await res.text(); } catch { msg = await res.text(); }
-            throw new Error(msg);
-        }
-        return res.json();
-    },
-
-    gatePairsToApiPayload() {
-    return this.gatePairs
-        .filter(p => p.start && p.end && p.confirmed)
-        .map(p => ({
-            pairId: p.pairId,
-            name: p.name || `Gate Pair ${p.pairId}`,
-            start: { lat: p.start.lat, lon: p.start.lon },
-            end:   { lat: p.end.lat,   lon: p.end.lon },
-            checkpoints: p.checkpoints.map(c => ({ lat: c.lat, lon: c.lon }))
-        }));
-    },
-    /* -------------------- MAP INIT -------------------- */
-    initMap() {
-      this.map = L.map('map', { worldCopyJump: true }).setView([49.35, -123.10], 11);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap contributors'
-      }).addTo(this.map);
-
-      const bcBounds = L.latLngBounds([48.0, -125.5], [50.5, -122.0]);
-      this.map.setMaxBounds(bcBounds);
-      this.map.setMinZoom(4);
-      this.map.setMaxZoom(20);
-    },
-
-    /* -------------------- UPLOAD -------------------- */
-    handleDrop(e) {
-      this.isDragOver = false;
-      const files = Array.from(e.dataTransfer.files || []).filter(f => f.name.toLowerCase().endsWith('.gpx'));
-      files.forEach(this.processFile);
-    },
-    handleFileSelect(e) {
-      const files = Array.from(e.target.files || []).filter(f => f.name.toLowerCase().endsWith('.gpx'));
-      files.forEach(this.processFile);
-    },
-
-    async processFile(file) {
-      // quick validation
-      if (!file.name.toLowerCase().endsWith('.gpx')) { this.error = 'Please select a .gpx file.'; return; }
-      if (file.size > 10 * 1024 * 1024) { this.error = 'Max file size is 10MB.'; return; }
-
-      this.loading = true; this.error = null;
-      const formData = new FormData();
-      formData.append('gpxfile', file);
-
-      try {
-        const resp = await fetch(API('/upload-gpx'), {
-            method: 'POST',
-            body: formData,
-            credentials: 'include'
-        });
-        if (!resp.ok) {
-          const err = await resp.json().catch(() => ({ error: 'Upload failed' }));
-          throw new Error(err.error || 'Upload failed');
-        }
-        const data = await resp.json();
-        if (!data.tracks?.length) throw new Error('No tracks found in GPX');
-
-        const base = this.tracks.length;
-        const newTracks = data.tracks.map((t, i) => ({
-          ...t,
-          id: `${Date.now()}_${i}`,
-          color: this.trackColors[(base + i) % this.trackColors.length]
-        }));
-
-        this.tracks.push(...newTracks);
-        this.selectedTrackIds.push(...newTracks.map(t => t.id));
-        this.redrawTracks();
-
-        if (this.gatePairs.some(p => p.confirmed)) {
-            this.recalcAllSegmentTimes();
-        }
-
-      } catch (e) {
-        this.error = e.message || 'Unknown error';
-      } finally {
-        this.loading = false;
-        if (this.$refs.fileInput) this.$refs.fileInput.value = '';
-      }
-    },
-
-    clearTracks() {
-      this.tracks = [];
-      this.clearLayerArray(this.trackLayers);
-    },
-
-    /* -------------------- GATES -------------------- */
-    addGatePair() {
-      const c = this.map.getCenter();
-      const offset = 0.001; // ~100m-ish latitude/longitude-ish (varies by lat)
-      const nextPairId = this.nextPairId();
-
-      const start = {
-        id: `${Date.now()}_S`,
-        pairId: nextPairId,
-        name: `Gate Pair ${nextPairId}`,
-        type: 'start',
-        lat: c.lat + offset,
-        lon: c.lng + offset,
-        confirmed: false,
-        editing: true
-      };
-      const end = {
-        id: `${Date.now()}_E`,
-        pairId: nextPairId,
-        name: `Gate Pair ${nextPairId}`,
-        type: 'end',
-        lat: c.lat - offset,
-        lon: c.lng - offset,
-        confirmed: false,
-        editing: true
-      };
-      this.timeGates.push(start, end);
-      this.redrawGates();
-    },
-
-    startEditing(pairId) {
-      // exactly one pair editable at once
-      this.timeGates.forEach(g => { g.editing = (g.pairId === pairId); if (g.pairId !== pairId && !g.confirmed) g.confirmed = false; });
-      this.redrawGates();
-    },
-
-    updatePairName(pairId, newName) {
-      // Update the persistent name storage
-      this.pairNames.set(pairId, newName);
-    },
-
-    saveAndConfirmGate(pairId) {
-      // Get the current name from the gatePairs (which includes any UI edits)
-      const pair = this.gatePairs.find(p => p.pairId === pairId);
-      const newName = pair?.name || `Gate Pair ${pairId}`;
-      
-      // Store the name persistently
-      this.pairNames.set(pairId, newName);
-
-      // Mark gates as confirmed and stop editing
-      this.timeGates = this.timeGates.map(g => {
-        if (g.pairId !== pairId) return g;
-        return { ...g, name: newName, confirmed: true, editing: false };
-      });
-      this.redrawGates();
-      this.recalcAllSegmentTimes();
-      this.fetchLeaderboard();
-    },
-
-    removeGatePair(pairId) {
-      this.timeGates = this.timeGates.filter(g => g.pairId !== pairId);
-      this.pairCheckpoints.delete(pairId);
-      this.pairNames.delete(pairId);
-      this.redrawGates();
-      this.recalcAllSegmentTimes();
-    },
-
-    clearAllGates() {
-      this.timeGates = [];
-      this.pairCheckpoints.clear();
-      this.pairNames.clear();
-      this.redrawGates();
-      this.recalcAllSegmentTimes();
-    },
-
-    nextPairId() {
-      // choose the smallest positive integer not used yet
-      const used = new Set(this.timeGates.map(g => g.pairId));
-      let i = 1; while (used.has(i)) i += 1; return i;
-    },
-
-    addCheckpoint(pairId) {
-      const pair = this.gatePairs.find(p => p.pairId === pairId);
-      if (pair) {
-        const newCheckpoint = { lat: pair.start.lat, lon: pair.start.lon };
-        if (!this.pairCheckpoints.has(pairId)) {
-          this.pairCheckpoints.set(pairId, []);
-        }
-        this.pairCheckpoints.get(pairId).push(newCheckpoint);
-        this.redrawGates();
-      }
-    },
-
-    removeLastCheckpoint(pairId) {
-      if (this.pairCheckpoints.has(pairId)) {
-        const checkpoints = this.pairCheckpoints.get(pairId);
-        if (checkpoints.length > 0) {
-          checkpoints.pop();
-          this.redrawGates();
-        }
-      }
-    },
-
-    /* -------------------- TRACKS -------------------- */
-    isSelected(trackId) {
-        return this.selectedTrackIds.includes(trackId);
-    },
-
-    toggleTrack(trackId) {
-        const i = this.selectedTrackIds.indexOf(trackId);
-        if (i >= 0) this.selectedTrackIds.splice(i, 1);
-        else this.selectedTrackIds.push(trackId);
-        this.redrawTracks();
-    },
-
-    removeTrack(trackId) {
-        this.tracks = this.tracks.filter(t => t.id !== trackId);
-        const i = this.selectedTrackIds.indexOf(trackId);
-        if (i >= 0) this.selectedTrackIds.splice(i, 1);
-        this.redrawTracks();
-    },
-
-    /* -------------------- DRAWING / LAYERS -------------------- */
-    clearLayerArray(arr) {
-      arr.forEach(l => { try { this.map.removeLayer(l); } catch(_) {} });
-      arr.splice(0, arr.length);
-    },
-
-    redrawTracks() {
-        this.clearLayerArray(this.trackLayers);
-
-        if (!this.tracks.length) return;
-
-        // Only draw tracks that are both selected and have points
-        const selected = new Set(this.selectedTrackIds);
-        const toDraw = this.tracks.filter(t => selected.has(t.id) && t.points?.length > 0);
-
-        if (!toDraw.length) return;
-
-        let bounds = null;
-        toDraw.forEach(t => {
-            const latlngs = t.points.map(p => [p.lat, p.lon]);
-            const line = L.polyline(latlngs, { color: t.color, weight: 3, opacity: 0.9 }).addTo(this.map);
-            this.trackLayers.push(line);
-
-            const start = L.marker(latlngs[0]).addTo(this.map).bindPopup(`${t.name} - Start`);
-            const end = L.marker(latlngs[latlngs.length - 1]).addTo(this.map).bindPopup(`${t.name} - End`);
-            this.trackLayers.push(start, end);
-
-            bounds = bounds ? bounds.extend(line.getBounds()) : line.getBounds();
-        });
-
-        if (bounds) this.map.fitBounds(bounds);
-    },
-
-    redrawGates() {
-    this.clearLayerArray(this.gateMarkers);
-    this.clearLayerArray(this.checkpointMarkers);
-
-    // Draw Start/End markers as before
-    for (const gate of this.timeGates) {
-        const isStart = gate.type === 'start';
-        const isEditing = gate.editing;
-        const isConfirmed = gate.confirmed;
-
-        const bg = isStart ? (isConfirmed ? '#10b981' : '#f59e0b') : (isConfirmed ? '#111827' : '#f59e0b');
-        const border = isStart ? (isConfirmed ? '#047857' : '#ea580c') : (isConfirmed ? '#ffffff' : '#ea580c');
-        const label = isStart ? 'S' : 'E';
-
-        const icon = L.divIcon({
-        className: 'gate-icon',
-        html: `<div style="background:${bg}; color:white; border-radius:50%; width:34px; height:34px; display:flex; align-items:center; justify-content:center; font-weight:700; border:3px solid ${border}; box-shadow:0 2px 6px rgba(0,0,0,.3);">${label}</div>`,
-        iconSize: [34,34], iconAnchor: [17,17]
-        });
-
-        const marker = L.marker([gate.lat, gate.lon], {
-        icon, draggable: isEditing || !isConfirmed
-        }).addTo(this.map);
-
-        marker.on('dragend', (e) => {
-        const ll = e.target.getLatLng();
-        gate.lat = ll.lat; gate.lon = ll.lng;
-        });
-
-        this.gateMarkers.push(marker);
-    }
-
-    // Draw checkpoints for pairs that are currently in memory (use computed pairs)
-    const pairs = this.gatePairs;
-    for (const pair of pairs) {
-        if (!Array.isArray(pair.checkpoints) || !pair.checkpoints.length) continue;
-
-        // color-tie to gate: use the start confirmed color hue (#10b981 green) but lighter bubble
-        const cpBorder = pair.confirmed ? '#10b981' : '#f59e0b';
-        pair.checkpoints.forEach((cp, idx) => {
-        const icon = L.divIcon({
-            className: 'cp-icon',
-            html: `<div style="background:white; color:${cpBorder}; border-radius:999px; border:2px solid ${cpBorder}; padding:2px 6px; font-size:12px; font-weight:700; box-shadow:0 1px 4px rgba(0,0,0,.25);">${idx+1}</div>`,
-            iconSize: [24, 22],
-            iconAnchor: [12, 11]
-        });
-        const m = L.marker([cp.lat, cp.lon], {
-            icon,
-            draggable: !!pair.editing  // only draggable in edit mode
-        }).addTo(this.map);
-
-        m.on('dragend', (e) => {
-            const ll = e.target.getLatLng();
-            cp.lat = ll.lat; cp.lon = ll.lng;
-        });
-
-        this.checkpointMarkers.push(m);
-        });
-    }
-    },
-
-    /* -------------------- SEGMENT TIMES -------------------- */
-    async recalcAllSegmentTimes() {
-        if (!this.tracks.length) return;
-
-        const gates = this.gatePairsToApiPayload();
-        // If no confirmed gates, clear any old results
-        if (!gates.length) {
-            this.tracks.forEach(t => t.segmentTimes = []);
-            return;
-        }
-
-        const buffer_m = this.bufferMeters || 10;
-
-        // Compute per track (simple + readable; can batch later if needed)
-        for (const t of this.tracks) {
-            if (!t.points?.length) { 
-                t.segmentTimes = []; 
-                continue; 
-            }
-            try {
-                const data = await this.apiPost("/segment-times", {
-                    points: t.points.map(p => ({ lat: p.lat, lon: p.lon, ele: p.ele ?? null, time: p.time ?? null })),
-                    gates,
-                    buffer_m
-                });
-                t.segmentTimes = data.segments || [];
-            } catch (e) {
-                console.error("Segment calc failed", e);
-                t.segmentTimes = [];
-            }
-        }
-    },
-
-    /* -------------------- STRAVA -------------------- */
-    async checkStravaConnected() {
-        try {
-            const res = await fetch(API('/api/strava/me'), { credentials: 'include' });
-            if (!res.ok) throw new Error(await res.text());
-            this.strava.athlete = await res.json();
-            this.strava.connected = true;
-            this.strava.error = null;
-        } catch (e) {
-            this.strava.connected = false;
-            this.strava.athlete = null;
-            // do not show error on page load
-        }
-    },
-
-    stravaLogin() {
-        window.location.href = API('/api/strava/login');
-    },
-    
-    async fetchStravaActivities(page = this.strava.page) {
-        if (!this.strava.connected) return;
-        this.strava.loading = true;
-        this.strava.error = null;
-        try {
-            const url = API(`/api/strava/activities?per_page=${this.strava.perPage}&page=${page}`);
-            const res = await fetch(url, { credentials: 'include' });
-            if (!res.ok) throw new Error(await res.text());
-            const data = await res.json();
-            // backend may return an array or {activities:[...]}
-            const list = Array.isArray(data) ? data : (data.activities || data.data || []);
-            this.strava.activities = list;
-            this.strava.page = page;
-            this.strava.hasMore = (list.length === this.strava.perPage);
-        } catch (e) {
-            this.strava.error = e?.message || 'Failed to load activities';
-        } finally {
-            this.strava.loading = false;
-        }
-    },
-
-    async nextStravaPage() {
-        if (!this.strava.hasMore) return;
-        await this.fetchStravaActivities(this.strava.page + 1);
-        this.clearStravaPreview();
-    },
-
-    async prevStravaPage() {
-        if (this.strava.page <= 1) return;
-        await this.fetchStravaActivities(this.strava.page - 1);
-        this.clearStravaPreview();
-    },
-
-    async refreshStrava() {
-        this.strava.page = 1;
-        await this.fetchStravaActivities(1);
-    },
-
-    clearStravaPreview() {
-        if (this.strava.preview.layer) {
-            try { this.map.removeLayer(this.strava.preview.layer); } catch {}
-        }
-        this.strava.preview.layer = null;
-        this.strava.preview.activityId = null;
-    },
-
-    async previewStravaActivity(activityId) {
-        // toggle off
-        if (this.strava.preview.activityId === activityId) {
-            this.clearStravaPreview();
-            return;
-        }
-        try {
-            // reuse your import endpoint for points
-            const res = await fetch(API(`/api/strava/activities/${activityId}/points`), { credentials: 'include' });
-            if (!res.ok) throw new Error(await res.text());
-            const data = await res.json();
-            const latlngs = (data.points || []).map(p => [p.lat, p.lon]);
-            if (!latlngs.length) throw new Error('No points');
-
-            this.clearStravaPreview();
-            const layer = L.polyline(latlngs, { weight: 4, opacity: 0.9, dashArray: '6,6' }).addTo(this.map);
-            this.strava.preview.layer = layer;
-            this.strava.preview.activityId = activityId;
-            this.map.fitBounds(layer.getBounds());
-        } catch (e) {
-            this.strava.error = e.message || 'Preview failed';
-        }
-    },
-
-    async importStravaActivity(activityId) {
-        try {
-            const res = await fetch(API(`/api/strava/activities/${activityId}/points`), { credentials: 'include' });
-            if (!res.ok) throw new Error(await res.text());
-            const data = await res.json();
-            const pts = data.points || [];
-            if (!pts.length) throw new Error('No timed points found for this activity');
-
-            const base = this.tracks.length;
-            const t = {
-            id: `${Date.now()}_${activityId}`,
-            name: data.name || `Activity ${activityId}`,
-            points: pts,
-            color: this.trackColors[(base) % this.trackColors.length]
-            };
-            this.tracks.push(t);
-            this.selectedTrackIds.push(t.id);
-            this.redrawTracks();
-
-            // recompute segment times if gates exist
-            if (this.gatePairs.some(p => p.confirmed)) {
-            this.recalcAllSegmentTimes();
-            }
-
-            // clear preview if it was this activity
-            if (this.strava.preview.activityId === activityId) {
-            this.clearStravaPreview();
-            }
-        } catch (e) {
-            alert(e.message || 'Import failed');
-        }
-    },
-  }
-});
-
-// Mount the Vue app and expose it globally
-window.app = app.mount('#app');
-
-// Initialize OAuth
-document.getElementById('btn-login').addEventListener('click', loginGoogle);
-document.getElementById('btn-logout').addEventListener('click', logout);
-hydrateAuth();
-</script>
+<script src='assets/config.js'></script>
+<script src='assets/app.js'></script>
 </body>
 </html>
+
+
+
+
+
+
+
+
+
+
+
+
