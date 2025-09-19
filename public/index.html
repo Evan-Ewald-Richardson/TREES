@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -94,7 +94,7 @@
               </div>
 
               <!-- Status Messages -->
-              <div class="muted" v-if="loading" style="margin-top:8px;">ProcessingGǪ</div>
+              <div class="muted" v-if="loading" style="margin-top:8px;">ProcessingGO</div>
               <div style="margin-top:8px; color:var(--danger)" v-if="error">{{ error }}</div>
 
               <!-- Strava Activities (when expanded) -->
@@ -114,7 +114,7 @@
                 </div>
 
                 <div v-if="strava.error" style="color:var(--danger); margin-bottom:8px; font-size:12px;">{{ strava.error }}</div>
-                <div v-if="strava.loading" class="muted" style="margin-bottom:8px; font-size:12px;">LoadingGǪ</div>
+                <div v-if="strava.loading" class="muted" style="margin-bottom:8px; font-size:12px;">LoadingGO</div>
 
                 <div v-if="!strava.loading">
                     <div v-if="!strava.activities.length" class="muted" style="font-size:12px;">No activities found.</div>
@@ -283,7 +283,7 @@
                     <div class="row" style="align-items:center; gap:8px;">
                       <label class="muted" style="font-size:12px;">Submit route:</label>
                       <select v-model="submitRouteId" style="flex:1; padding:6px 8px; border:1px solid var(--border); border-radius:6px; font-size:12px;">
-                        <option :value="null">— Select Active Route —</option>
+                        <option :value="null">� Select Active Route �</option>
                         <option v-for="t in activeRoutes" :key="t.id" :value="t.id">{{ t.name }}</option>
                       </select>
                       <button class="btn" :disabled="!user.loggedIn || !submitRouteId" @click="submitTrackToLeaderboard(submitRouteId)">Submit</button>
@@ -341,7 +341,8 @@
                   <button @click="openPanel('save')" class="btn">Save Course</button>
                   <button @click="clearAllGates" class="btn btn-danger">Clear All Gates</button>
                 </div>
-              </div>
+              </div>
+
             </div>
           </details>
         </section>
@@ -583,8 +584,8 @@
 
 
 
-<script src='assets/config.js'></script>
-<script src='assets/app.js'></script>
+
+<script type='module' src='assets/js/main.js'></script>
 </body>
 </html>
 

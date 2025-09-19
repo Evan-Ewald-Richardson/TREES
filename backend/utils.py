@@ -1,13 +1,5 @@
-"""Utility helpers for backend application."""
+"""Backward compatible utility exports."""
 
-from __future__ import annotations
-
-from datetime import datetime, timezone
-
-
-def utcnow() -> datetime:
-    """Return the current UTC datetime."""
-    return datetime.now(timezone.utc)
-
+from .core.time import utcnow
 
 __all__ = ["utcnow"]
