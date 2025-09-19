@@ -46,9 +46,10 @@ export function createState() {
             name: "",
             loginName: "",
             leaderboardPositions: [],
-            createdCourses: []
+            createdCourses: [],
+            isAdmin: false
         },
-        config: { superUserName: null },
+        config: { superUserName: null, superUserEmails: [] },
 
         // Strava
         strava: {

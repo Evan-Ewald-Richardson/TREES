@@ -356,7 +356,10 @@
         <!-- Profile Panel -->
         <div v-if="isProfileOpen" class="profile-right-panel">
           <div class="profile-header-right">
-            <h3 style="margin:0; font-size:18px;">{{ user.name }}'s Profile</h3>
+            <h3 style="margin:0; font-size:18px; display:flex; align-items:center; gap:8px;">
+              <span>{{ user.name }}'s Profile</span>
+              <span v-if="isSuperUser" class="badge success" style="text-transform:uppercase; letter-spacing:0.4px;">Admin</span>
+            </h3>
             <div style="display:flex; gap:8px;">
               <button @click="fetchProfile" class="btn" style="font-size:12px; padding:6px 10px;">
                 <svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor">

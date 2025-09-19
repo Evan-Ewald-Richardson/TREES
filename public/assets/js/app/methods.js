@@ -137,6 +137,7 @@ Check browser console for details.`);
         console.log("Login successful:", u);
         this.user.name = u.name;
         this.user.loggedIn = true;
+        this.user.isAdmin = this.isSuperUser;
         this.user.loginName = "";
         localStorage.setItem("ever_user", JSON.stringify(u.name));
         await this.fetchProfile();
@@ -156,6 +157,7 @@ This might be a CORS issue or the server might be unreachable.`);
       this.closePanels();
       this.user.createdCourses = [];
       this.user.leaderboardPositions = [];
+      this.user.isAdmin = false;
       localStorage.removeItem("ever_user");
     },
     
@@ -170,6 +172,9 @@ This might be a CORS issue or the server might be unreachable.`);
             const p = await r.json();
             this.user.createdCourses = p.createdCourses || [];
             this.user.leaderboardPositions = p.leaderboardPositions || [];
+            const authUser = (typeof window !== 'undefined' && window.__AUTH_USER__) || null;
+            const computedAdmin = typeof p.isAdmin === 'boolean' ? p.isAdmin : !!(authUser && authUser.role === 'admin');
+            this.user.isAdmin = computedAdmin;
             return;
           }
         } catch (e) {
@@ -186,6 +191,7 @@ This might be a CORS issue or the server might be unreachable.`);
             const p = await r.json();
             this.user.createdCourses = p.createdCourses || [];
             this.user.leaderboardPositions = p.leaderboardPositions || [];
+            this.user.isAdmin = this.isSuperUser;
             return;
           }
         }
@@ -196,6 +202,7 @@ This might be a CORS issue or the server might be unreachable.`);
       // Clear profile data if all methods fail
       this.user.createdCourses = [];
       this.user.leaderboardPositions = [];
+      this.user.isAdmin = false;
     },
     
     // UI hooks for the existing right-side profile panel
@@ -221,7 +228,7 @@ This might be a CORS issue or the server might be unreachable.`);
     async deleteLeaderboardEntry(entryId) {
       if (!confirm("Delete this leaderboard entry?")) return;
       const url = API(`/users/${encodeURIComponent(this.backendUsername)}/leaderboard/${entryId}`);
-      const r = await fetch(url, { method: "DELETE" });
+      const r = await fetch(url, { method: "DELETE", credentials: "include" });
       if (!r.ok) { alert("Delete failed"); return; }
       await this.fetchProfile();
     },
@@ -229,7 +236,7 @@ This might be a CORS issue or the server might be unreachable.`);
     async deleteCourse(courseId) {
       if (!confirm("Delete this course? This also deletes its leaderboard entries.")) return;
       const url = API(`/users/${encodeURIComponent(this.backendUsername)}/courses/${courseId}`);
-      const r = await fetch(url, { method: "DELETE" });
+      const r = await fetch(url, { method: "DELETE", credentials: "include" });
       if (!r.ok) { alert("Delete failed"); return; }
       await this.fetchProfile();
     },

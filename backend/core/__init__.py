@@ -13,6 +13,7 @@ from .config import (
     STRAVA_CLIENT_ID,
     STRAVA_CLIENT_SECRET,
     STRAVA_REDIRECT_URI,
+    SUPER_USER_EMAILS,
     SUPER_USER_NAME,
     UPLOAD_DIR,
 )
@@ -32,6 +33,7 @@ __all__ = [
     "STRAVA_CLIENT_ID",
     "STRAVA_CLIENT_SECRET",
     "STRAVA_REDIRECT_URI",
+    "SUPER_USER_EMAILS",
     "SUPER_USER_NAME",
     "UPLOAD_DIR",
     "engine",

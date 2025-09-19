@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
-from ...core import BACKEND_URL, SUPER_USER_NAME
+from ...core import BACKEND_URL, SUPER_USER_EMAILS, SUPER_USER_NAME
 
 router = APIRouter(tags=["system"])
 
@@ -27,12 +27,13 @@ def healthz() -> JSONResponse:
 
 
 @router.get("/config")
-def get_config() -> Dict[str, str]:
+def get_config() -> Dict[str, Any]:
     """Expose frontend configuration values."""
 
     return {
         "backend_url": BACKEND_URL,
         "super_user_name": SUPER_USER_NAME,
+        "super_user_emails": SUPER_USER_EMAILS,
     }
 
 

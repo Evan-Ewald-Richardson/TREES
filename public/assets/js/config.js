@@ -80,6 +80,7 @@ export async function hydrateAuth(appInstance = typeof window !== 'undefined' ? 
     if (app && app.user) {
       app.user.loggedIn = true;
       app.user.name = user.name || user.email;
+      app.user.isAdmin = user.role === 'admin';
       if (typeof app.fetchProfile === 'function') {
         await app.fetchProfile();
       }
@@ -99,6 +100,7 @@ export async function hydrateAuth(appInstance = typeof window !== 'undefined' ? 
       if (typeof app.closePanels === 'function') app.closePanels();
       app.user.createdCourses = [];
       app.user.leaderboardPositions = [];
+      app.user.isAdmin = false;
     }
   }
 }

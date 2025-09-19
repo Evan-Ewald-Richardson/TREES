@@ -84,6 +84,11 @@ FRONTEND_ORIGIN = FRONTEND_ORIGINS[0] if FRONTEND_ORIGINS else ""
 BACKEND_URL = os.getenv("BACKEND_URL", "")
 SUPER_USER_NAME = os.getenv("SUPER_USER_NAME", "EVERGREEN")
 
+_super_user_emails_env = _split_csv(os.getenv("SUPER_USER_EMAILS"))
+SUPER_USER_EMAILS = _unique(
+    [email for email in ["evrichard.02@gmail.com", *_super_user_emails_env] if email]
+)
+
 COOKIE_DOMAIN = os.getenv("COOKIE_DOMAIN") or None
 COOKIE_SECURE = _env_bool("COOKIE_SECURE", False)
 COOKIE_SAMESITE = os.getenv("COOKIE_SAMESITE", "lax")
@@ -105,6 +110,7 @@ __all__ = [
     "STRAVA_CLIENT_ID",
     "STRAVA_CLIENT_SECRET",
     "STRAVA_REDIRECT_URI",
+    "SUPER_USER_EMAILS",
     "SUPER_USER_NAME",
     "UPLOAD_DIR",
 ]

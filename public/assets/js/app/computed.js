@@ -17,7 +17,15 @@ export const computedConfig = {
       return this.ui.activePanel !== null;
     },
     isSuperUser() {
-      return this.user.loggedIn && this.config.superUserName && this.user.name === this.config.superUserName;
+      if (!this.user.loggedIn) return false;
+      const authUser = (typeof window !== 'undefined' && window.__AUTH_USER__) || null;
+      const emailList = Array.isArray(this.config.superUserEmails) ? this.config.superUserEmails : [];
+      const authEmail = authUser && authUser.email ? authUser.email.trim().toLowerCase() : '';
+      if (authUser && authUser.role === 'admin') return true;
+      if (authEmail && emailList.some(email => (email || '').trim().toLowerCase() === authEmail)) return true;
+      const configured = (this.config.superUserName || '').trim().toLowerCase();
+      if (!configured) return false;
+      return (this.user.name || '').trim().toLowerCase() === configured;
     },
     
     // Get a consistent username for backend operations

@@ -9,6 +9,7 @@ export async function mountedHook() {
       const cfg = await fetch(this.API("/config")).then(r => r.json());
       if (!window.API_BASE && cfg.backend_url) window.API_BASE = cfg.backend_url;
       this.config.superUserName = cfg.super_user_name || null;
+      this.config.superUserEmails = Array.isArray(cfg.super_user_emails) ? cfg.super_user_emails : [];
     } catch(e) {}
     
     const saved = localStorage.getItem("ever_user");

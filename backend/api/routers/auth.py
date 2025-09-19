@@ -9,12 +9,14 @@ from typing import Optional
 from authlib.integrations.starlette_client import OAuth
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
-from sqlmodel import Session, select
+from sqlmodel import Session, func, select
 
-from ...core import FRONTEND_ORIGIN, get_session
+from ...core import FRONTEND_ORIGIN, SUPER_USER_EMAILS, get_session
 from ...models import OAuthUser
 
 router = APIRouter(tags=["auth"])
+
+_ADMIN_EMAILS = {email.strip().lower() for email in SUPER_USER_EMAILS if email}
 
 oauth = OAuth()
 
@@ -50,9 +52,18 @@ def _upsert_google_user(
     name: Optional[str],
     picture: Optional[str],
 ) -> OAuthUser:
-    user = session.exec(select(OAuthUser).where(OAuthUser.email == email)).first()
+    normalized_email = (email or "").strip().lower()
+    email = normalized_email
+    target_role = "admin" if normalized_email in _ADMIN_EMAILS else "user"
+
+    user = session.exec(
+        select(OAuthUser).where(func.lower(OAuthUser.email) == normalized_email)
+    ).first()
     if user:
         changed = False
+        if user.email != email:
+            user.email = email
+            changed = True
         if not user.provider_sub:
             user.provider_sub = sub
             changed = True
@@ -61,6 +72,9 @@ def _upsert_google_user(
             changed = True
         if picture and user.avatar_url != picture:
             user.avatar_url = picture
+            changed = True
+        if user.role != target_role:
+            user.role = target_role
             changed = True
         if changed:
             session.add(user)
@@ -74,11 +88,13 @@ def _upsert_google_user(
         avatar_url=picture,
         provider="google",
         provider_sub=sub,
+        role=target_role,
     )
     session.add(user)
     session.commit()
     session.refresh(user)
     return user
+
 
 
 @router.get("/auth/google/start")
@@ -115,6 +131,7 @@ async def auth_google_callback(
     )
     request.session["uid"] = str(user.id)
     request.session["name"] = user.name or user.email
+    request.session["email"] = user.email
     request.session["role"] = user.role
 
     next_url = request.session.pop("next", None) or FRONTEND_ORIGIN
@@ -173,25 +190,35 @@ def me_profile(request: Request, session: Session = Depends(get_session)):
         request.session.clear()
         raise HTTPException(status_code=401, detail="User not found")
 
+    email_lower = (oauth_user.email or "").strip().lower()
+    is_admin = oauth_user.role == "admin" or email_lower in _ADMIN_EMAILS
+
     user_name = oauth_user.name
     if user_name and " " in user_name:
         user_name = user_name.split(" ")[0]
     elif not user_name:
-        user_name = oauth_user.email.split("@")[0]
+        user_name = (oauth_user.email or "").split("@")[0]
+    user_name = (user_name or "").strip()
 
     from sqlalchemy import text
 
-    courses_result = session.execute(
-        text(
-            """
+    if is_admin or not user_name:
+        courses_sql = """
+            SELECT id, name, buffer_m, gates_json, created_by, description, image_url, created_at
+            FROM course
+            ORDER BY id DESC
+        """
+        courses_params: dict[str, str] = {}
+    else:
+        courses_sql = """
             SELECT id, name, buffer_m, gates_json, created_by, description, image_url, created_at
             FROM course
             WHERE created_by = :user_name
             ORDER BY id DESC
-            """
-        ),
-        {"user_name": user_name},
-    )
+        """
+        courses_params = {"user_name": user_name}
+
+    courses_result = session.execute(text(courses_sql), courses_params)
 
     import json as json_lib
 
@@ -258,8 +285,12 @@ def me_profile(request: Request, session: Session = Depends(get_session)):
         {
             "createdCourses": created_courses,
             "leaderboardPositions": leaderboard_positions,
+            "isAdmin": is_admin,
         }
     )
+
+
+
 
 
 __all__ = ["router"]
