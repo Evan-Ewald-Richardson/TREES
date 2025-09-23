@@ -288,9 +288,39 @@ This might be a CORS issue or the server might be unreachable.`);
     },
     courseLeaderboardCount(course) {
       if (!course) return 0;
+      if (Array.isArray(course.fullLeaderboard)) return course.fullLeaderboard.length;
       if (typeof course.leaderboard_count === 'number') return course.leaderboard_count;
       if (Array.isArray(course.leaderboard)) return course.leaderboard.length;
       return course.first_place ? 1 : 0;
+    },
+    courseGateItems(course) {
+      if (!course || !Array.isArray(course.gates)) return [];
+      return course.gates.map((gate, index) => {
+        const checkpoints = Array.isArray(gate.checkpoints) ? gate.checkpoints.length : 0;
+        const startLabel = this.formatLatLon(gate.start);
+        const endLabel = this.formatLatLon(gate.end);
+        const pairId = gate.pairId ?? gate.pair_id;
+        const name = gate.name || (pairId != null ? `Gate Pair ${pairId}` : `Gate Pair ${index + 1}`);
+        return {
+          key: pairId ?? index,
+          name,
+          start: startLabel,
+          end: endLabel,
+          checkpoints,
+        };
+      });
+    },
+    formatCoord(value) {
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        return value.toFixed(5);
+      }
+      return 'N/A';
+    },
+    formatLatLon(point) {
+      if (!point || typeof point.lat !== 'number' || typeof point.lon !== 'number') {
+        return 'N/A';
+      }
+      return `${this.formatCoord(point.lat)}, ${this.formatCoord(point.lon)}`;
     },
     loadCourseCard(id) {
       this.closePanels();
@@ -355,26 +385,37 @@ This might be a CORS issue or the server might be unreachable.`);
 
         // [ADD] Courses: list
     async loadCourses() {
-        try {
-            const data = await this.apiGet("/courses_summary");
-            const normalized = (Array.isArray(data) ? data : [])
-                .map(c => ({
-                    ...c,
-                    gates: Array.isArray(c.gates) ? c.gates : [],
-                }));
-            this.courses = normalized;
-            this.coursesGrid = normalized
-                .slice()
-                .sort((a, b) => {
-                    const aTime = a.created_at ? Date.parse(a.created_at) : 0;
-                    const bTime = b.created_at ? Date.parse(b.created_at) : 0;
-                    return bTime - aTime;
-                });
-        } catch (e) {
-            console.error(e);
-            this.courses = [];
-            this.coursesGrid = [];
-        }
+      try {
+        const data = await this.apiGet("/courses_summary");
+        const normalized = (Array.isArray(data) ? data : []).map(c => ({
+          ...c,
+          gates: Array.isArray(c.gates) ? c.gates : [],
+        }));
+        const withLeaderboards = await Promise.all(
+          normalized.map(async (course) => {
+            try {
+              const lb = await this.apiGet(`/leaderboard/${course.id}`);
+              const entries = lb && Array.isArray(lb.entries) ? lb.entries : [];
+              return { ...course, fullLeaderboard: entries };
+            } catch (err) {
+              console.warn('Failed to load leaderboard for course', course.id, err);
+              return { ...course, fullLeaderboard: [] };
+            }
+          })
+        );
+        this.courses = withLeaderboards;
+        this.coursesGrid = withLeaderboards
+          .slice()
+          .sort((a, b) => {
+            const aTime = a.created_at ? Date.parse(a.created_at) : 0;
+            const bTime = b.created_at ? Date.parse(b.created_at) : 0;
+            return bTime - aTime;
+          });
+      } catch (e) {
+        console.error(e);
+        this.courses = [];
+        this.coursesGrid = [];
+      }
     },
 
     // [ADD] Courses: load selected course into the map + state

@@ -9,11 +9,37 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 
 from ...core import get_session, utcnow
-from ...models import Course, LeaderboardEntry
+from ...models import Course, LeaderboardEntry, LeaderboardRoute
 from ...services.courses import gates_from_course
 from ...services.gpx import compute_segment_times
 
 router = APIRouter(tags=["leaderboard"])
+
+
+def _store_route_snapshot(
+    session: Session, entry: LeaderboardEntry, points_json: str
+) -> LeaderboardRoute:
+    """Create or update the stored route for the given leaderboard entry."""
+
+    route = session.exec(
+        select(LeaderboardRoute).where(
+            LeaderboardRoute.leaderboard_entry_id == entry.id
+        )
+    ).first()
+    if route:
+        route.points_json = points_json
+        route.username = entry.username
+        route.course_id = entry.course_id
+        route.touch()
+    else:
+        route = LeaderboardRoute(
+            leaderboard_entry_id=entry.id,
+            course_id=entry.course_id,
+            username=entry.username,
+            points_json=points_json,
+        )
+    session.add(route)
+    return route
 
 
 @router.post("/leaderboard/{course_id}/submit")
@@ -38,6 +64,8 @@ def submit_result(
         raise HTTPException(400, "Track does not complete the course (N/A present).")
 
     total_seconds = sum(int(segment["timeSec"]) for segment in segments)
+    segments_json = json.dumps(segments)
+    points_json = json.dumps(points)
 
     existing_entry = session.exec(
         select(LeaderboardEntry).where(
@@ -46,37 +74,52 @@ def submit_result(
         )
     ).first()
 
+    entry_updated = False
+    route_snapshot: LeaderboardRoute | None = None
+
     if existing_entry:
-        if int(total_seconds) < existing_entry.total_time_sec:
-            existing_entry.total_time_sec = int(total_seconds)
-            existing_entry.segment_times_json = json.dumps(segments)
+        entry = existing_entry
+        if total_seconds < existing_entry.total_time_sec:
+            existing_entry.total_time_sec = total_seconds
+            existing_entry.segment_times_json = segments_json
             existing_entry.created_at = utcnow()
-            session.add(existing_entry)
-            session.commit()
-            session.refresh(existing_entry)
-            entry = existing_entry
-        else:
-            entry = existing_entry
+            entry_updated = True
     else:
         entry = LeaderboardEntry(
             course_id=course_id,
             username=username[:40],
-            total_time_sec=int(total_seconds),
-            segment_times_json=json.dumps(segments),
+            total_time_sec=total_seconds,
+            segment_times_json=segments_json,
         )
         session.add(entry)
+        entry_updated = True
+
+    if entry_updated:
+        session.add(entry)
+        session.flush()
+        route_snapshot = _store_route_snapshot(session, entry, points_json)
         session.commit()
         session.refresh(entry)
+    else:
+        route_snapshot = session.exec(
+            select(LeaderboardRoute).where(
+                LeaderboardRoute.leaderboard_entry_id == entry.id
+            )
+        ).first()
+
+    entry_payload = {
+        "id": entry.id,
+        "username": entry.username,
+        "total_time_sec": entry.total_time_sec,
+        "segments": segments,
+        "created_at": entry.created_at.isoformat() + "Z",
+    }
+    if route_snapshot:
+        entry_payload["route_id"] = route_snapshot.id
 
     return {
         "ok": True,
-        "entry": {
-            "id": entry.id,
-            "username": entry.username,
-            "total_time_sec": entry.total_time_sec,
-            "segments": segments,
-            "created_at": entry.created_at.isoformat() + "Z",
-        },
+        "entry": entry_payload,
     }
 
 

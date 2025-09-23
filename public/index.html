@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+ï»¿<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -16,9 +16,7 @@
       <div class="brand-title">EVERMORE</div>
       <div class="brand-subtitle"><em>EV's Enduro Racing + MORE</em></div>
     </div>
-    
     <nav class="topnav"></nav>
-    
     <div class="user-auth">
       <!-- OAuth Login/Profile Area -->
       <div id="auth-bar" style="display:flex;align-items:center;gap:12px;">
@@ -27,7 +25,6 @@
         <button id="btn-login" class="btn" style="font-size:12px; padding:6px 10px;">Sign in with Google</button>
         <button id="btn-logout" class="btn" style="display:none;font-size:12px; padding:6px 10px;">Log out</button>
       </div>
-      
       <!-- Profile Area (when logged in) -->
       <div v-if="user.loggedIn" class="user-profile">
         <button @click="togglePanel('profile')" class="profile-button">
@@ -40,7 +37,6 @@
       </div>
     </div>
   </header>
-
   <div class="container">
     <!-- LEFT PANEL -->
     <div class="left">
@@ -75,7 +71,6 @@
                       Choose Files
                     </button>
                 </div>
-
                 <!-- Strava Connect -->
                 <div class="upload" style="background:var(--surface-1); border:1px solid var(--border);">
                     <!-- Strava Icon -->
@@ -83,7 +78,6 @@
                     <div style="font-weight:600; margin-bottom:4px; font-size:14px;">Strava</div>
                     <div class="muted" style="margin:4px 0 8px; font-size:12px;" v-if="!strava.connected">Connect account</div>
                     <div class="muted" style="margin:4px 0 8px; font-size:12px;" v-else>{{ strava.athlete?.firstname || 'Connected' }}</div>
-                    
                     <button v-if="!strava.connected" @click="stravaLogin" class="btn" style="font-size:12px; padding:6px 10px; background:#FC4C02;">
                       Connect
                     </button>
@@ -92,15 +86,12 @@
                     </button>
                 </div>
               </div>
-
               <!-- Status Messages -->
               <div class="muted" v-if="loading" style="margin-top:8px;">ProcessingGO</div>
               <div style="margin-top:8px; color:var(--danger)" v-if="error">{{ error }}</div>
-
               <!-- Strava Activities (when expanded) -->
               <div v-if="strava.connected && strava.open" style="margin-top:12px; padding-top:12px; border-top:1px solid var(--border);">
                 <h4 style="margin:0 0 8px; font-size:14px; color:var(--muted);">Strava Activities</h4>
-                
                 <div class="row" style="align-items:center; margin-bottom:8px;">
                     <button @click="refreshStrava" class="btn btn-ghost" style="font-size:12px; padding:4px 8px;">
                       <svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor">
@@ -112,13 +103,10 @@
                     </button>
                     <div class="muted" style="font-size:12px;">{{ strava.perPage }} most recent</div>
                 </div>
-
                 <div v-if="strava.error" style="color:var(--danger); margin-bottom:8px; font-size:12px;">{{ strava.error }}</div>
                 <div v-if="strava.loading" class="muted" style="margin-bottom:8px; font-size:12px;">LoadingGO</div>
-
                 <div v-if="!strava.loading">
                     <div v-if="!strava.activities.length" class="muted" style="font-size:12px;">No activities found.</div>
-                    
                     <div v-else>
                     <div v-for="a in strava.activities" :key="a.id"
                         style="display:flex; align-items:center; gap:8px; border:1px solid var(--border); background:var(--surface-1); border-radius:8px; padding:6px; margin-bottom:4px; font-size:12px;">
@@ -131,17 +119,14 @@
                             <span v-if="a.distance"> -+ {{ (a.distance/1000).toFixed(2) }} km</span>
                         </div>
                         </div>
-
                         <button @click="previewStravaActivity(a.id)" 
                                 :class="strava.preview.activityId === a.id ? 'btn btn-ghost' : 'btn'"
                                 style="font-size:11px; padding:4px 6px;">
                         {{ strava.preview.activityId === a.id ? 'Hide' : 'Preview' }}
                         </button>
-
                         <button @click="importStravaActivity(a.id)" class="btn" style="font-size:11px; padding:4px 6px;">Import</button>
                     </div>
                     </div>
-
                     <!-- Pagination -->
                     <div class="row" style="justify-content:space-between; margin-top:8px; font-size:12px;">
                     <button @click="prevStravaPage" :disabled="strava.page <= 1" class="btn btn-ghost" style="font-size:11px; padding:4px 8px;">Prev</button>
@@ -149,7 +134,6 @@
                     <button @click="nextStravaPage" :disabled="!strava.hasMore" class="btn btn-ghost" style="font-size:11px; padding:4px 8px;">Next</button>
                     </div>
                 </div>
-
                 <div v-if="!strava.connected && !strava.loading" class="muted" style="margin-top:8px; font-size:12px;">
                     Connect your Strava account to import activities.
                 </div>
@@ -157,7 +141,6 @@
             </div>
           </details>
         </section>
-
         <!-- ROUTES -->
         <section id="routes" class="section">
           <details class="panel" open>
@@ -175,11 +158,9 @@
             </summary>
             <div class="panel-body">
               <div v-if="tracks.length > 0">
-
                 <div class="muted" style="margin:4px 0 8px; font-size:12px;" v-if="!user.loggedIn || !selectedCourseId">
                   Login and select a course to submit routes.
                 </div>
-
                 <div class="tracks">
                     <div v-for="t in tracks" :key="t.id"
                         class="track-item"
@@ -190,7 +171,6 @@
                     <div style="flex:1; min-width:0;">
                         <div style="font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ t.name }}</div>
                         <div class="muted">{{ t.points.length }} pts</div>
-
                         <!-- Segment times (per confirmed gate pair) -->
                         <div v-if="t.segmentTimes && t.segmentTimes.length" style="margin-top:6px; font-size:12px;">
                         <div v-for="seg in t.segmentTimes" :key="seg.segment" class="muted">
@@ -202,7 +182,6 @@
                         </div>
                         </div>
                     </div>
-
                     <!-- Actions: Submit + Remove -->
                     <div style="display:flex; flex-direction:column; gap:6px; align-items:flex-end;">
                       <div style="position:relative;">
@@ -214,7 +193,6 @@
                     </div>
                 </div>
               </div>
-
               <!-- Empty state -->
               <div v-else style="text-align:center; padding:20px;">
                 <svg style="width:48px; height:48px; color:var(--muted); margin:0 auto 12px;" viewBox="0 0 24 24" fill="none" stroke="currentColor">
@@ -227,7 +205,6 @@
             </div>
           </details>
         </section>
-
         <!-- COURSES -->
         <section id="courses" class="section">
           <details class="panel" open>
@@ -241,7 +218,7 @@
                 </svg>
                 Courses
               </div>
-              <span class="muted">load, create & save</span>
+              <span class="muted"></span>
             </summary>
             <div class="panel-body">
               <!-- Load Course Section (Top) -->
@@ -256,7 +233,6 @@
                     </h4>
                     <div class="row" style="align-items:center;"><button v-if="selectedCourseId" @click="deselectCourse" class="btn btn-ghost" style="font-size:12px; padding:6px 10px;">Deselect</button><button @click="openCoursesModal" class="btn" style="font-size:12px; padding:6px 10px;"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 18l6-6-6-6"/></svg>Browse</button></div>
                 </div>
-
                 <div class="muted" style="margin-bottom:4px; font-size:12px;">Open the Courses page to select and load a course.</div>
                 <div v-if="selectedCourseId" style="margin-top:8px;">
                   <div class="row" style="align-items:center; justify-content:space-between; border:1px solid var(--border); border-radius:8px; padding:8px;">
@@ -283,7 +259,7 @@
                     <div class="row" style="align-items:center; gap:8px;">
                       <label class="muted" style="font-size:12px;">Submit route:</label>
                       <select v-model="submitRouteId" style="flex:1; padding:6px 8px; border:1px solid var(--border); border-radius:6px; font-size:12px;">
-                        <option :value="null">— Select Active Route —</option>
+                        <option :value="null">? Select Active Route ?</option>
                         <option v-for="t in activeRoutes" :key="t.id" :value="t.id">{{ t.name }}</option>
                       </select>
                       <button class="btn" :disabled="!user.loggedIn || !submitRouteId" @click="submitTrackToLeaderboard(submitRouteId)">Submit</button>
@@ -292,7 +268,6 @@
                   </div>
                 </div>
               </div>
-
               <!-- Gates Section (Middle) -->
               <div style="margin-bottom:20px; border-top:1px solid var(--border); padding-top:16px;">
                 <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:8px;">
@@ -307,17 +282,14 @@
                       <button @click="startNewCourse" class="btn">Start New Course</button>
                     </div>
                 </div>
-
                 <div v-if="gatePairs.length === 0" class="muted" style="margin-bottom:8px; font-size:12px;">No gates yet. Click "Add Gate" to create timing points.</div>
                 <div v-if="selectedCourseId && !canEditGates" class="muted" style="margin-bottom:8px; font-size:12px;">Loaded course gates are read-only. Start a new course to edit.</div>
-
                 <div v-if="canEditGates" v-for="pair in gatePairs" :key="pair.pairId" class="gate-item" style="margin-bottom:8px;">
                     <div class="gate-title">
                     <input v-if="pair.editing" class="gate-name" :value="pair.name" @input="updatePairName(pair.pairId, $event.target.value)" placeholder="Gate pair name">
                     <div v-else style="font-weight:600;">{{ pair.name }}</div>
                     <div class="status" :class="{ok: pair.confirmed}">{{ pair.confirmed ? 'CONFIRMED' : 'EDITING' }}</div>
                     </div>
-
                     <div style="margin-top:6px; font-size:11px;">
                     <span class="badge start">START</span>
                     <span class="coords">{{ pair.start.lat.toFixed(6) }}, {{ pair.start.lon.toFixed(6) }}</span>
@@ -326,7 +298,6 @@
                     <span class="badge end">END</span>
                     <span class="coords">{{ pair.end.lat.toFixed(6) }}, {{ pair.end.lon.toFixed(6) }}</span>
                     </div>
-
                     <div class="row" style="margin-top:8px;">
                      <button v-if="!pair.editing" @click="startEditing(pair.pairId)" class="btn btn-warn" style="font-size:11px; padding:4px 8px;">Edit</button>
                      <button v-if="pair.editing" @click="saveAndConfirmGate(pair.pairId)" class="btn" style="font-size:11px; padding:4px 8px;">Save</button>
@@ -342,17 +313,14 @@
                   <button @click="clearAllGates" class="btn btn-danger">Clear All Gates</button>
                 </div>
               </div>
-
             </div>
           </details>
         </section>
         <div class="resizer" id="leftResizer" aria-label="Resize sidebar"></div>
     </div>
-
     <!-- RIGHT PANEL (MAP OR PROFILE) -->
     <div class="right">
         <div id="map" :style="{display: isAnyPanelOpen ? 'none' : 'block'}"></div>
-        
         <!-- Profile Panel -->
         <div v-if="isProfileOpen" class="profile-right-panel">
           <div class="profile-header-right">
@@ -375,7 +343,6 @@
               </button>
             </div>
           </div>
-          
           <div class="profile-content-right">
             <!-- Your Courses -->
             <div class="profile-section">
@@ -414,7 +381,6 @@
                 </div>
               </div>
             </div>
-
             <!-- Leaderboard Positions -->
             <div class="profile-section">
               <div class="profile-panel">
@@ -461,7 +427,6 @@
             </div>
           </div>
         </div>
-        
         <!-- Courses Modal Panel -->
         <div v-if="isCoursesOpen" class="profile-right-panel">
           <div class="profile-header-right">
@@ -471,7 +436,6 @@
               <button @click="closePanels" class="btn btn-ghost" style="font-size:12px; padding:6px 10px;">Back to Map</button>
             </div>
           </div>
-
           <div class="profile-content-right">
             <div class="profile-section">
               <div class="profile-panel">
@@ -491,48 +455,49 @@
                     </svg>
                     <div>No courses yet</div>
                   </div>
-
                   <!-- Tile grid -->
-                  <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap:12px;">
-                    <div v-for="c in coursesGrid" :key="c.id"
-                         style="border:1px solid var(--border); border-radius:12px; overflow:hidden; background:var(--surface-1); box-shadow:var(--shadow);">
-                      
-                      <div style="height:140px; background:var(--surface-2); display:flex; align-items:center; justify-content:center; overflow:hidden;">
-                        <img v-if="c.image_url" :src="API(c.image_url)" alt="" style="width:100%; height:100%; object-fit:cover;">
-                        <div v-else class="muted" style="font-size:12px;">No image</div>
-                      </div>
-
-                      <div style="padding:10px;">
-                        <div style="font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ c.name }}</div>
-                        <div class="muted" style="font-size:12px; margin:4px 0 8px; min-height:32px; overflow:hidden; text-overflow:ellipsis;">
-                          {{ c.description || 'No description' }}
-                        </div>
-
-                        <div class="muted" style="font-size:12px; margin-bottom:6px;">
-                          Gates: <strong>{{ courseGateCount(c) }}</strong> &bull; Buffer: <strong>{{ c.buffer_m }}m</strong>
-                        </div>
-                        <div class="muted" style="font-size:12px; margin-bottom:6px;">
-                          Leaderboard entries: <strong>{{ courseLeaderboardCount(c) }}</strong>
-                        </div>
-                        <div class="muted" style="font-size:12px; margin-bottom:6px;">
-                          Created: <strong>{{ formatDate(c.created_at) }}</strong>
-                        </div>
-                        <div class="muted" style="font-size:12px; margin-bottom:10px;">
-                          Created by: <strong>{{ c.created_by || '&mdash;' }}</strong>
-                        </div>
-
-                        <!-- Mini leaderboard -->
-                        <div style="display:flex; align-items:center; justify-content:space-between; font-size:12px; border:1px solid var(--border); border-radius:8px; padding:6px 8px;">
-                          <div class="muted">Fastest time</div>
-                          <div v-if="c.first_place" style="display:flex; gap:6px; align-items:center;">
-                            <strong>{{ c.first_place.username }}</strong>
-                            <span class="badge success">{{ formatSeconds(c.first_place.total_time_sec) }}</span>
+                  <div class="course-grid">
+                    <div v-for="c in coursesGrid" :key="c.id" class="course-card">
+                      <div class="course-card__body">
+                        <div class="course-card__content">
+                          <div class="course-card__image">
+                            <img v-if="c.image_url" :src="API(c.image_url)" alt="" class="course-card__image-img">
+                            <div v-else class="course-card__image-placeholder muted">No image</div>
                           </div>
-                          <div v-else class="muted">No results yet</div>
+                          <div class="course-card__title">{{ c.name }}</div>
+                          <div class="course-card__description">{{ c.description || 'No description' }}</div>
+                          <div class="course-card__actions">
+                            <button @click="loadCourseCard(c.id)" class="btn btn-ghost" style="font-size:12px; padding:6px 10px;">Load</button>
+                          </div>
                         </div>
-
-                        <div style="display:flex; gap:8px; margin-top:8px; justify-content:flex-end;">
-                          <button @click="loadCourseCard(c.id)" class="btn btn-ghost" style="font-size:12px; padding:6px 10px;">Load</button>
+                        <div class="course-card__section">
+                          <div class="course-card__section-title">Gates</div>
+                          <div class="course-card__scroll">
+                            <div v-if="!courseGateItems(c).length" class="course-card__empty muted">No gates defined</div>
+                            <div v-for="gate in courseGateItems(c)" :key="gate.key" class="course-card__gate">
+                              <div class="course-card__gate-name">{{ gate.name }}</div>
+                              <div class="course-card__gate-meta">Start: {{ gate.start }}</div>
+                              <div class="course-card__gate-meta">End: {{ gate.end }}</div>
+                              <div class="course-card__gate-meta">Checkpoints: {{ gate.checkpoints }}</div>
+                            </div>
+                          </div>
+                        </div>
+                        <div class="course-card__section">
+                          <div class="course-card__section-title">Leaderboard</div>
+                          <div class="course-card__scroll">
+                            <div v-if="!c.fullLeaderboard || !c.fullLeaderboard.length" class="course-card__empty muted">No results yet</div>
+                            <div v-for="(entry, idx) in c.fullLeaderboard" :key="entry.id || idx" class="course-card__leaderboard-row">
+                              <div class="course-card__leaderboard-rank">#{{ idx + 1 }}</div>
+                              <div class="course-card__leaderboard-info">
+                                <div class="course-card__leaderboard-name">{{ entry.username }}</div>
+                                <div class="course-card__leaderboard-meta">
+                                  <span>{{ formatSeconds(entry.total_time_sec) }}</span>
+                                  <span>&bull;</span>
+                                  <span>{{ formatDate(entry.created_at) }}</span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -542,7 +507,6 @@
             </div>
           </div>
         </div>
-        
         <!-- Save Course Modal -->
         <div v-if="isSaveOpen" class="profile-right-panel">
           <div class="profile-header-right">
@@ -551,7 +515,6 @@
               <button @click="closePanels" class="btn btn-ghost" style="font-size:12px; padding:6px 10px;">Cancel</button>
             </div>
           </div>
-
           <div class="profile-content-right">
             <div class="profile-section">
               <div class="profile-panel">
@@ -559,7 +522,6 @@
                 <div class="profile-panel-body" style="display:grid; gap:10px;">
                   <input v-model="newCourse.name" placeholder="Course name">
                   <textarea v-model="newCourse.description" rows="4" placeholder="Short description"></textarea>
-
                   <!-- Image picker with square preview -->
                   <div style="display:flex; gap:12px; align-items:center;">
                     <div style="width:128px; height:128px; border:1px solid var(--border); border-radius:8px; background:var(--surface-2); overflow:hidden; display:flex; align-items:center; justify-content:center;">
@@ -582,24 +544,6 @@
     </div>
     </div>
 </div>
-
-
-
-
-
-
 <script type='module' src='assets/js/main.js'></script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
